@@ -6,7 +6,7 @@ angle_version = 'le90'
 
 # model settings
 model = dict(
-    type='RotatedFCOS',
+    type='H2RBoxV2PDetector',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -27,7 +27,7 @@ model = dict(
         num_outs=5,
         relu_before_extra_convs=True),
     bbox_head=dict(
-        type='RotatedFCOSHead',
+        type='H2RBoxV2PHeadStuctureTensor',
         num_classes=15,
         in_channels=256,
         stacked_convs=4,
@@ -37,26 +37,22 @@ model = dict(
         center_sample_radius=1.5,
         norm_on_bbox=True,
         centerness_on_reg=True,
-        separate_angle=True,
-        scale_angle=True,
+        square_cls=[1, 9, 11],
+        resize_cls=[1],
+        scale_angle=False,
         bbox_coder=dict(
             type='DistanceAnglePointCoder', angle_version=angle_version),
-        h_bbox_coder=dict(type='DistancePointBBoxCoder'),
-        angle_coder=dict(
-            type='PSCCoder', 
-            angle_version=angle_version, 
-            dual_freq=True, 
-            thr_mod=0),
         loss_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        loss_bbox=dict(type='GIoULoss', loss_weight=1.0),
-        loss_angle=dict(type='L1Loss', loss_weight=0.05),
+        loss_bbox=dict(type='IoULoss', loss_weight=1.0),
         loss_centerness=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
+        loss_ss_symmetry=dict(
+            type='SmoothL1Loss', loss_weight=0.2, beta=0.1)),
     # training and testing settings
     train_cfg=None,
     test_cfg=dict(
@@ -68,6 +64,7 @@ model = dict(
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
@@ -82,8 +79,44 @@ train_pipeline = [
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-data = dict(
-    samples_per_gpu=2,
-    train=dict(pipeline=train_pipeline, version=angle_version),
-    val=dict(version=angle_version),
-    test=dict(version=angle_version))
+
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(1024, 1024),
+        flip=False,
+        transforms=[
+            dict(type='RResize'),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=64),
+            dict(type='DefaultFormatBundle'),
+            dict(type='Collect', keys=['img'])
+        ])
+]
+#data = dict(
+#    train=dict(pipeline=train_pipeline, version=angle_version),
+#    val=dict(version=angle_version),
+#    test=dict(version=angle_version))
+
+data_root = 'data/DOTA/split_ss_dota1_0/' 
+data = dict( 
+    train=dict(type='DOTAWSOODDataset', pipeline=train_pipeline, 
+            ann_file=data_root + 'trainval/annfiles/', 
+            img_prefix=data_root + 'trainval/images/', 
+            version=angle_version), 
+    val=dict(type='DOTAWSOODDataset', pipeline=test_pipeline, 
+            ann_file=data_root + 'trainval/annfiles/', 
+            img_prefix=data_root + 'trainval/images/', 
+            version=angle_version), 
+    test=dict(type='DOTAWSOODDataset', pipeline=test_pipeline, 
+            ann_file=data_root + 'test/images/', 
+            img_prefix=data_root + 'test/images/', 
+            version=angle_version)) 
+
+optimizer = dict(
+    _delete_=True,
+    type='AdamW',
+    lr=0.00005,
+    betas=(0.9, 0.999),
+    weight_decay=0.05)

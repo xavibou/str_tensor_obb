@@ -37,15 +37,14 @@ model = dict(
         center_sample_radius=1.5,
         norm_on_bbox=True,
         centerness_on_reg=True,
-        separate_angle=True,
+        separate_angle=False,
         scale_angle=True,
         bbox_coder=dict(
             type='DistanceAnglePointCoder', angle_version=angle_version),
-        h_bbox_coder=dict(type='DistancePointBBoxCoder'),
         angle_coder=dict(
             type='PSCCoder', 
-            angle_version=angle_version, 
-            dual_freq=True, 
+            angle_version='le90', 
+            dual_freq=False, 
             thr_mod=0),
         loss_cls=dict(
             type='FocalLoss',
@@ -53,8 +52,7 @@ model = dict(
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        loss_bbox=dict(type='GIoULoss', loss_weight=1.0),
-        loss_angle=dict(type='L1Loss', loss_weight=0.05),
+        loss_bbox=dict(type='RotatedIoULoss', loss_weight=1.0),
         loss_centerness=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
     # training and testing settings
@@ -83,7 +81,6 @@ train_pipeline = [
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
 data = dict(
-    samples_per_gpu=2,
     train=dict(pipeline=train_pipeline, version=angle_version),
     val=dict(version=angle_version),
     test=dict(version=angle_version))

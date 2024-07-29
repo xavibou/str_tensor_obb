@@ -9,12 +9,12 @@ from mmdet.core import multi_apply, reduce_mean
 from mmrotate.core import build_bbox_coder, multiclass_nms_rotated
 from ..builder import ROTATED_HEADS, build_loss
 from .rotated_anchor_free_head import RotatedAnchorFreeHead
-
+from mmrotate.core.bbox.transforms import norm_angle
 INF = 1e8
 
 
 @ROTATED_HEADS.register_module()
-class H2RBoxV2PHead(RotatedAnchorFreeHead):
+class StructureTensorFCOSHead(RotatedAnchorFreeHead):
     """Anchor-free head used in `FCOS <https://arxiv.org/abs/1904.01355>`_.
     The FCOS head does not use anchor boxes. Instead bounding boxes are
     predicted at each pixel and a centerness measure is used to suppress
@@ -41,6 +41,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         separate_angle (bool): If true, angle prediction is separated from
             bbox regression loss. Default: False.
         scale_angle (bool): If true, add scale to angle pred branch. Default: True.
+        angle_coder (dict): Config of angle coder.
         h_bbox_coder (dict): Config of horzional bbox coder, only used when separate_angle is True.
         conv_bias (bool | str): If specified as `auto`, it will be decided by the
             norm_cfg. Bias of conv will be set as True if `norm_cfg` is None, otherwise
@@ -68,14 +69,10 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                  center_sample_radius=1.5,
                  norm_on_bbox=False,
                  centerness_on_reg=False,
-                 scale_angle=False,
-                 square_cls=[],
-                 resize_cls=[],
-                 angle_coder=dict(
-                     type='PSCCoder', 
-                     angle_version='le90', 
-                     dual_freq=False, 
-                     thr_mod=0),
+                 separate_angle=False,
+                 scale_angle=True,
+                 angle_coder=dict(type='PseudoAngleCoder'),
+                 h_bbox_coder=dict(type='DistancePointBBoxCoder'),
                  loss_cls=dict(
                      type='FocalLoss',
                      use_sigmoid=True,
@@ -83,12 +80,11 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                      alpha=0.25,
                      loss_weight=1.0),
                  loss_bbox=dict(type='IoULoss', loss_weight=1.0),
+                 loss_angle=dict(type='L1Loss', loss_weight=1.0),
                  loss_centerness=dict(
                      type='CrossEntropyLoss',
                      use_sigmoid=True,
                      loss_weight=1.0),
-                 loss_ss_symmetry=dict(
-                     type='SmoothL1Loss', loss_weight=0.2, beta=0.1),
                  norm_cfg=dict(type='GN', num_groups=32, requires_grad=True),
                  init_cfg=dict(
                      type='Normal',
@@ -105,9 +101,8 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         self.center_sample_radius = center_sample_radius
         self.norm_on_bbox = norm_on_bbox
         self.centerness_on_reg = centerness_on_reg
+        self.separate_angle = separate_angle
         self.is_scale_angle = scale_angle
-        self.square_cls = square_cls
-        self.resize_cls = resize_cls
         self.angle_coder = build_bbox_coder(angle_coder)
         super().__init__(
             num_classes,
@@ -118,47 +113,16 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             init_cfg=init_cfg,
             **kwargs)
         self.loss_centerness = build_loss(loss_centerness)
-        self.loss_ss_symmetry = build_loss(loss_ss_symmetry)
-
-    def rbox2hbox(self, rbboxes):
-        w = rbboxes[:, 2::5]
-        h = rbboxes[:, 3::5]
-        a = rbboxes[:, 4::5].detach()
-        cosa = torch.cos(a).abs()
-        sina = torch.sin(a).abs()
-        hbbox_w = cosa * w + sina * h
-        hbbox_h = sina * w + cosa * h
-        dx = rbboxes[..., 0]
-        dy = rbboxes[..., 1]
-        dw = hbbox_w.reshape(-1)
-        dh = hbbox_h.reshape(-1)
-        x1 = dx - dw / 2
-        y1 = dy - dh / 2
-        x2 = dx + dw / 2
-        y2 = dy + dh / 2
-        return torch.stack((x1, y1, x2, y2), -1)
-
-    def nested_projection(self, pred, target):
-        target_xy1 = target[..., 0:2] - target[..., 2:4] / 2
-        target_xy2 = target[..., 0:2] + target[..., 2:4] / 2
-        target_projected = torch.cat((target_xy1, target_xy2), -1)
-        pred_xy = pred[..., 0:2]
-        pred_wh = pred[..., 2:4]
-        da = pred[..., 4] - target[..., 4]
-        cosa = torch.cos(da).abs()
-        sina = torch.sin(da).abs()
-        pred_wh = torch.matmul(
-            torch.stack((cosa, sina, sina, cosa), -1).view(*cosa.shape, 2, 2),
-            pred_wh[..., None])[..., 0]
-        pred_xy1 = pred_xy - pred_wh / 2
-        pred_xy2 = pred_xy + pred_wh / 2
-        pred_projected = torch.cat((pred_xy1, pred_xy2), -1)
-        return pred_projected, target_projected
+        if self.separate_angle:
+            self.loss_angle = build_loss(loss_angle)
+            self.h_bbox_coder = build_bbox_coder(h_bbox_coder)
+        # Angle predict length
 
     def _init_layers(self):
         """Initialize layers of the head."""
         super()._init_layers()
         self.conv_centerness = nn.Conv2d(self.feat_channels, 1, 3, padding=1)
+        # self.conv_angle = nn.Conv2d(self.feat_channels, 1, 3, padding=1)
         self.conv_angle = nn.Conv2d(
             self.feat_channels, self.angle_coder.encode_size, 3, padding=1)
         self.scales = nn.ModuleList([Scale(1.0) for _ in self.strides])
@@ -222,6 +186,69 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             angle_pred = self.scale_angle(angle_pred).float()
         return cls_score, bbox_pred, angle_pred, centerness
 
+    def str_tensor_to_obb(self, center, str_tensor, angle_range='le90'):
+        # Extract individual components from str_tensor
+        a = str_tensor[:, 0]  # shape [N]
+        b = str_tensor[:, 1]  # shape [N]
+        c = str_tensor[:, 2]  # shape [N]
+
+        # Construct the structure tensors
+        structure_tensors = torch.stack([
+            torch.stack([a, c], dim=-1),  # shape [N, 2]
+            torch.stack([c, b], dim=-1)   # shape [N, 2]
+        ], dim=-2)  # shape [N, 2, 2]
+
+        # Calculate the eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = torch.linalg.eigh(structure_tensors)  # eigenvalues shape [N, 2], eigenvectors shape [N, 2, 2]
+
+        # Extract the real parts of the eigenvalues and eigenvectors
+        eigenvalues = torch.abs(eigenvalues.real)  # shape [N, 2]
+        eigenvectors = eigenvectors.real  # shape [N, 2, 2]
+
+        scale = 1.0  # Scale factor for the width and height
+        w = scale * eigenvalues[:, 0]  # shape [N]
+        h = scale * eigenvalues[:, 1]  # shape [N]
+        a = torch.atan2(eigenvectors[:, 1, 1], eigenvectors[:, 0, 1])  # shape [N]
+        a = norm_angle(a, angle_range)
+
+        # Construct the obb tensor [center_x, center_y, width, height, angle]
+        obb = torch.stack([center[:, 0], center[:, 1], 2 * w, 2 * h, a], dim=-1)  # shape [N, 5]
+
+        return obb
+    
+    def angle_to_str_tensor(self, angle):
+        # angle: tensor of shape [N], the angle in radians
+        
+        # create eigenvalues: tensor of shape [N, 2], the eigenvalues [lambda1, lambda2] are [2.0, 1.0]
+        eigenvalues = torch.tensor([[2.0, 1.0]], device=angle.device).expand(angle.shape[0], -1)
+        
+        # Ensure the eigenvalues are positive
+        eigenvalues = torch.abs(eigenvalues)
+        
+        # Calculate the components of the rotation matrix R(theta)
+        cos_theta = torch.cos(angle)
+        sin_theta = torch.sin(angle)
+        
+        R = torch.stack([
+            torch.stack([cos_theta, -sin_theta], dim=-1),
+            torch.stack([sin_theta, cos_theta], dim=-1)
+        ], dim=-2)  # shape [N, 2, 2]
+        
+        # Diagonal matrix of eigenvalues
+        D = torch.diag_embed(eigenvalues)  # shape [N, 2, 2]
+        
+        # Structure tensor T = R D R^T
+        RT = R.transpose(-1, -2)
+        T = torch.matmul(R, torch.matmul(D, RT))  # shape [N, 2, 2]
+        
+        # Extract a, b, c from the structure tensor T
+        a = T[:, 0, 0]  # shape [N]
+        b = T[:, 1, 1]  # shape [N]
+        c = T[:, 0, 1]  # shape [N]
+        
+        str_tensor = torch.stack([a, b, c], dim=-1)  # shape [N, 3]
+        return str_tensor
+
     @force_fp32(
         apply_to=('cls_scores', 'bbox_preds', 'angle_preds', 'centernesses'))
     def loss(self,
@@ -262,7 +289,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             featmap_sizes,
             dtype=bbox_preds[0].dtype,
             device=bbox_preds[0].device)
-        labels, bbox_targets, angle_targets, bid_targets = self.get_targets(
+        labels, bbox_targets, angle_targets = self.get_targets(
             all_level_points, gt_bboxes, gt_labels)
 
         num_imgs = cls_scores[0].size(0)
@@ -275,10 +302,15 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             bbox_pred.permute(0, 2, 3, 1).reshape(-1, 4)
             for bbox_pred in bbox_preds
         ]
+        angle_dim = self.angle_coder.encode_size
         flatten_angle_preds = [
-            angle_pred.permute(0, 2, 3, 1).reshape(-1, self.angle_coder.encode_size)
+            angle_pred.permute(0, 2, 3, 1).reshape(-1, angle_dim)
             for angle_pred in angle_preds
         ]
+        # flatten_angle_preds = [
+        #     angle_pred.permute(0, 2, 3, 1).reshape(-1, 1)
+        #     for angle_pred in angle_preds
+        # ]
         flatten_centerness = [
             centerness.permute(0, 2, 3, 1).reshape(-1)
             for centerness in centernesses
@@ -290,7 +322,6 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         flatten_labels = torch.cat(labels)
         flatten_bbox_targets = torch.cat(bbox_targets)
         flatten_angle_targets = torch.cat(angle_targets)
-        flatten_bid_targets = torch.cat(bid_targets)
         # repeat points to align with bbox_preds
         flatten_points = torch.cat(
             [points.repeat(num_imgs, 1) for points in all_level_points])
@@ -310,8 +341,6 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         pos_centerness = flatten_centerness[pos_inds]
         pos_bbox_targets = flatten_bbox_targets[pos_inds]
         pos_angle_targets = flatten_angle_targets[pos_inds]
-        pos_labels = flatten_labels[pos_inds]
-        pos_bid_targets = flatten_bid_targets[pos_inds]
         pos_centerness_targets = self.centerness_target(pos_bbox_targets)
         # centerness weighted iou loss
         centerness_denorm = max(
@@ -319,93 +348,53 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
 
         if len(pos_inds) > 0:
             pos_points = flatten_points[pos_inds]
-
-            pos_decoded_angle_preds = self.angle_coder.decode(
-                pos_angle_preds, keepdim=True).detach()
-            
-            square_mask = torch.zeros_like(pos_labels, dtype=torch.bool)
-            for c in self.square_cls:
-                square_mask = torch.logical_or(square_mask, pos_labels == c)
-            pos_decoded_angle_preds[square_mask] = 0
-            target_mask = torch.abs(
-                pos_angle_targets[square_mask]) < torch.pi / 4
-            pos_angle_targets[square_mask] = torch.where(
-                target_mask, 0, -torch.pi / 2)
-            
-            pos_bbox_preds = torch.cat(
-                [pos_bbox_preds, pos_decoded_angle_preds], dim=-1)
-            pos_bbox_targets = torch.cat([pos_bbox_targets, pos_angle_targets],
-                                         dim=-1)
-
-            pos_decoded_bbox_preds = self.bbox_coder.decode(
-                pos_points, pos_bbox_preds)
-            pos_decoded_bbox_targets = self.bbox_coder.decode(
+            if self.separate_angle:
+                bbox_coder = self.h_bbox_coder
+            else:
+                bbox_coder = self.bbox_coder
+                pos_decoded_angle_preds = self.str_tensor_to_obb(
+                    pos_points, pos_angle_preds)[:, 4]
+                #pos_decoded_angle_preds = self.angle_coder.decode(
+                #    pos_angle_preds, keepdim=True)
+                pos_bbox_preds = torch.cat(
+                    [pos_bbox_preds, pos_decoded_angle_preds[..., None]], dim=-1)
+                # pos_bbox_preds = torch.cat([pos_bbox_preds, pos_angle_preds],
+                #                            dim=-1)
+                pos_bbox_targets = torch.cat(
+                    [pos_bbox_targets, pos_angle_targets], dim=-1)
+            pos_decoded_bbox_preds = bbox_coder.decode(pos_points,
+                                                       pos_bbox_preds)
+            pos_decoded_target_preds = bbox_coder.decode(
                 pos_points, pos_bbox_targets)
-
             loss_bbox = self.loss_bbox(
-                    *self.nested_projection(pos_decoded_bbox_preds,
-                                            pos_decoded_bbox_targets),
-                    weight=pos_centerness_targets,
-                    avg_factor=centerness_denorm)
+                pos_decoded_bbox_preds,
+                pos_decoded_target_preds,
+                weight=pos_centerness_targets,
+                avg_factor=centerness_denorm)
+            if self.separate_angle:
+                pos_angle_targets = self.angle_to_str_tensor(pos_angle_targets)
+                #pos_angle_targets = self.angle_coder.encode(pos_angle_targets)
+                loss_angle = self.loss_angle(
+                    pos_angle_preds, pos_angle_targets, avg_factor=num_pos)
             loss_centerness = self.loss_centerness(
                 pos_centerness, pos_centerness_targets, avg_factor=num_pos)
-                        
-            # Self-supervision
-            # Aggregate targets of the same bbox based on their identical bid
-            bid, idx = torch.unique(pos_bid_targets, return_inverse=True)
-            compacted_bid_targets = torch.empty_like(bid).index_reduce_(
-                0, idx, pos_bid_targets, 'mean', include_self=False)
-            
-            # Generate a mask to eliminate bboxes without correspondence
-            # (bcnt is supposed to be 2, for original and transformed)
-            _, bidx, bcnt = torch.unique(
-                compacted_bid_targets.long(),
-                return_inverse=True,
-                return_counts=True)
-            bmsk = bcnt[bidx] == 2
-
-            # The reduce all sample points of each object
-            ss_info = img_metas[0]['ss']
-            rot = ss_info[1]
-            pair_angle_preds = torch.empty(
-                *bid.shape, pos_angle_preds.shape[-1],
-                device=bid.device).index_reduce_(
-                    0, idx, pos_angle_preds, 'mean',
-                    include_self=False)[bmsk].view(-1, 2,
-                                                pos_angle_preds.shape[-1])
-            pair_labels = torch.empty(
-                *bid.shape, dtype=pos_labels.dtype,
-                device=bid.device).index_reduce_(
-                    0, idx, pos_labels, 'mean',
-                    include_self=False)[bmsk].view(-1, 2)[:, 0]
-            square_mask = torch.zeros_like(pair_labels, dtype=torch.bool)
-            for c in self.square_cls:
-                square_mask = torch.logical_or(square_mask, pair_labels == c)
-
-            angle_ori_preds = self.angle_coder.decode(
-                pair_angle_preds[:, 0], keepdim=True)
-            angle_trs_preds = self.angle_coder.decode(
-                pair_angle_preds[:, 1], keepdim=True)
-            if len(pair_angle_preds):
-                if ss_info[0] == 'rot':
-                    d_ang = angle_trs_preds - angle_ori_preds - rot
-                else:
-                    d_ang = angle_ori_preds + angle_trs_preds
-                d_ang = (d_ang + torch.pi / 2) % torch.pi - torch.pi / 2
-                d_ang[square_mask] = 0
-                loss_ss = self.loss_ss_symmetry(d_ang, torch.zeros_like(d_ang))
-            else:
-                loss_ss = pair_angle_preds.sum()
         else:
             loss_bbox = pos_bbox_preds.sum()
             loss_centerness = pos_centerness.sum()
-            loss_ss = pos_bbox_preds.sum()
+            if self.separate_angle:
+                loss_angle = pos_angle_preds.sum()
 
-        return dict(
-            loss_cls=loss_cls,
-            loss_bbox=loss_bbox,
-            loss_centerness=loss_centerness,
-            loss_ss=loss_ss)
+        if self.separate_angle:
+            return dict(
+                loss_cls=loss_cls,
+                loss_bbox=loss_bbox,
+                loss_angle=loss_angle,
+                loss_centerness=loss_centerness)
+        else:
+            return dict(
+                loss_cls=loss_cls,
+                loss_bbox=loss_bbox,
+                loss_centerness=loss_centerness)
 
     def get_targets(self, points, gt_bboxes_list, gt_labels_list):
         """Compute regression, classification and centerness targets for points
@@ -441,8 +430,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         num_points = [center.size(0) for center in points]
 
         # get labels and bbox_targets of each image
-        labels_list, bbox_targets_list, \
-            angle_targets_list, bid_targets_list = multi_apply(
+        labels_list, bbox_targets_list, angle_targets_list = multi_apply(
             self._get_target_single,
             gt_bboxes_list,
             gt_labels_list,
@@ -460,16 +448,11 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             angle_targets.split(num_points, 0)
             for angle_targets in angle_targets_list
         ]
-        bid_targets_list = [
-            bid_targets.split(num_points, 0)
-            for bid_targets in bid_targets_list
-        ]
 
         # concat per level image
         concat_lvl_labels = []
         concat_lvl_bbox_targets = []
         concat_lvl_angle_targets = []
-        concat_lvl_bid_targets = []
         for i in range(num_levels):
             concat_lvl_labels.append(
                 torch.cat([labels[i] for labels in labels_list]))
@@ -477,30 +460,23 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                 [bbox_targets[i] for bbox_targets in bbox_targets_list])
             angle_targets = torch.cat(
                 [angle_targets[i] for angle_targets in angle_targets_list])
-            bid_targets = torch.cat(
-                [bid_targets[i] for bid_targets in bid_targets_list])
             if self.norm_on_bbox:
                 bbox_targets = bbox_targets / self.strides[i]
             concat_lvl_bbox_targets.append(bbox_targets)
             concat_lvl_angle_targets.append(angle_targets)
-            concat_lvl_bid_targets.append(bid_targets)
         return (concat_lvl_labels, concat_lvl_bbox_targets,
-                concat_lvl_angle_targets, concat_lvl_bid_targets)
+                concat_lvl_angle_targets)
 
     def _get_target_single(self, gt_bboxes, gt_labels, points, regress_ranges,
                            num_points_per_lvl):
         """Compute regression, classification and angle targets for a single
         image."""
-        gt_bids = gt_bboxes[:, 5]
-        gt_bboxes = gt_bboxes[:, :5]
-
         num_points = points.size(0)
         num_gts = gt_labels.size(0)
         if num_gts == 0:
             return gt_labels.new_full((num_points,), self.num_classes), \
                    gt_bboxes.new_zeros((num_points, 4)), \
-                   gt_bboxes.new_zeros((num_points, 1)), \
-                   gt_bboxes.new_zeros((num_points, ))
+                   gt_bboxes.new_zeros((num_points, 1))
 
         areas = gt_bboxes[:, 2] * gt_bboxes[:, 3]
         # TODO: figure out why these two are different
@@ -561,9 +537,8 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         labels[min_area == INF] = self.num_classes  # set as BG
         bbox_targets = bbox_targets[range(num_points), min_area_inds]
         angle_targets = gt_angle[range(num_points), min_area_inds]
-        bid_targets = gt_bids[min_area_inds]
 
-        return labels, bbox_targets, angle_targets, bid_targets
+        return labels, bbox_targets, angle_targets
 
     def centerness_target(self, pos_bbox_targets):
         """Compute centerness targets.
@@ -703,9 +678,13 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             centerness = centerness.permute(1, 2, 0).reshape(-1).sigmoid()
 
             bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 4)
-            angle_pred = angle_pred.permute(1, 2, 0).reshape(-1, self.angle_coder.encode_size)
-            angle_pred = self.angle_coder.decode(angle_pred, keepdim=True)
-            bbox_pred = torch.cat([bbox_pred, angle_pred], dim=1)
+            angle_pred = angle_pred.permute(1, 2, 0).reshape(
+                -1, self.angle_coder.encode_size)
+            # angle_pred = angle_pred.permute(1, 2, 0).reshape(-1, 1)
+            decoded_angle = self.str_tensor_to_obb(points, angle_pred)[:, 4]
+            #decoded_angle = self.angle_coder.decode(angle_pred, keepdim=True)
+            bbox_pred = torch.cat([bbox_pred, decoded_angle[..., None]], dim=-1)
+            # bbox_pred = torch.cat([bbox_pred, angle_pred], dim=1)
             nms_pre = cfg.get('nms_pre', -1)
             if nms_pre > 0 and scores.shape[0] > nms_pre:
                 max_scores, _ = (scores * centerness[:, None]).max(dim=1)
@@ -736,10 +715,6 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             cfg.nms,
             cfg.max_per_img,
             score_factors=mlvl_centerness)
-        for id in self.square_cls:
-            det_bboxes[det_labels == id, 4] = 0
-        for id in self.resize_cls:
-            det_bboxes[det_labels == id, 2:4] *= 0.85
         return det_bboxes, det_labels
 
     @force_fp32(

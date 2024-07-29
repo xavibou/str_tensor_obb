@@ -1,12 +1,14 @@
 _base_ = [
-    '../_base_/datasets/dotav1.py', '../_base_/schedules/schedule_1x.py',
+    '../_base_/datasets/dotav1.py',
+    '../_base_/schedules/schedule_1x.py',
     '../_base_/default_runtime.py'
 ]
 angle_version = 'le90'
 
 # model settings
 model = dict(
-    type='RotatedFCOS',
+    type='H2RBox',
+    crop_size=(960, 960),
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -27,7 +29,7 @@ model = dict(
         num_outs=5,
         relu_before_extra_convs=True),
     bbox_head=dict(
-        type='RotatedFCOSHead',
+        type='H2RBoxHead',
         num_classes=15,
         in_channels=256,
         stacked_convs=4,
@@ -37,24 +39,25 @@ model = dict(
         center_sample_radius=1.5,
         norm_on_bbox=True,
         centerness_on_reg=True,
-        separate_angle=True,
+        separate_angle=False,
         scale_angle=True,
+        reassigner='one2one',
+        rect_classes=[9, 11],
         bbox_coder=dict(
             type='DistanceAnglePointCoder', angle_version=angle_version),
-        h_bbox_coder=dict(type='DistancePointBBoxCoder'),
-        angle_coder=dict(
-            type='PSCCoder', 
-            angle_version=angle_version, 
-            dual_freq=True, 
-            thr_mod=0),
         loss_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        loss_bbox=dict(type='GIoULoss', loss_weight=1.0),
-        loss_angle=dict(type='L1Loss', loss_weight=0.05),
+        loss_bbox=dict(type='IoULoss', loss_weight=1.0),
+        loss_bbox_aug=dict(
+            type='H2RBoxLoss',
+            loss_weight=0.4,
+            center_loss_cfg=dict(type='L1Loss', loss_weight=0.0),
+            shape_loss_cfg=dict(type='IoULoss', loss_weight=1.0),
+            angle_loss_cfg=dict(type='L1Loss', loss_weight=1.0)),
         loss_centerness=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
     # training and testing settings
@@ -71,19 +74,53 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(1024, 1024)),
+    dict(type='FilterNoCenterObject', img_scale=(960, 960), crop_size=(960, 960)),
+    dict(type='RResize', img_scale=(960, 960)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
         direction=['horizontal', 'vertical', 'diagonal'],
         version=angle_version),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size_divisor=32),
+    dict(type='Pad', size_divisor=1),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
+
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(960, 960),
+        flip=False,
+        transforms=[
+            dict(type='RResize'),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=64),
+            dict(type='DefaultFormatBundle'),
+            dict(type='Collect', keys=['img'])
+        ])
+]
+
+data_root = '/data/nas/dataset_share/DOTA/split_ss_dota1_0/'
 data = dict(
-    samples_per_gpu=2,
-    train=dict(pipeline=train_pipeline, version=angle_version),
-    val=dict(version=angle_version),
-    test=dict(version=angle_version))
+    train=dict(type='DOTAWSOODDataset', pipeline=train_pipeline,
+               ann_file=data_root + 'trainval/annfiles/',
+               img_prefix=data_root + 'trainval/images/',
+               version=angle_version),
+    val=dict(type='DOTAWSOODDataset', pipeline=test_pipeline,
+             ann_file=data_root + 'trainval/annfiles/',
+             img_prefix=data_root + 'trainval/images/',
+             version=angle_version),
+    test=dict(type='DOTAWSOODDataset', pipeline=test_pipeline,
+              ann_file=data_root + 'test/images/',
+              img_prefix=data_root + 'test/images/',
+              version=angle_version))
+
+custom_imports = dict(
+    imports=['h2rbox'],
+    allow_failed_imports=True)
+
+log_config = dict(interval=50)
+checkpoint_config = dict(interval=6)
+optimizer = dict(lr=0.0005)

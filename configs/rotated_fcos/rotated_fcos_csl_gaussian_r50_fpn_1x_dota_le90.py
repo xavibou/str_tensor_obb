@@ -28,3 +28,4 @@ model = dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
         loss_angle=dict(
             type='SmoothFocalLoss', gamma=2.0, alpha=0.25, loss_weight=0.2)), )
+

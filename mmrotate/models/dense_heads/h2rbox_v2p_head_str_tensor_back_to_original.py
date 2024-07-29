@@ -9,12 +9,189 @@ from mmdet.core import multi_apply, reduce_mean
 from mmrotate.core import build_bbox_coder, multiclass_nms_rotated
 from ..builder import ROTATED_HEADS, build_loss
 from .rotated_anchor_free_head import RotatedAnchorFreeHead
-
+from mmrotate.core.bbox.transforms import norm_angle
 INF = 1e8
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_oriented_bbox(ax, bbox, edgecolor='r'):
+    """
+    Plot an oriented bounding box.
+    
+    bbox: [x_center, y_center, width, height, angle]
+    """
+    x_center, y_center, width, height, angle_rad = bbox
+    
+    # Get the 4 corners of the bounding box
+    corners = np.array([
+        [-width / 2, -height / 2],
+        [width / 2, -height / 2],
+        [width / 2, height / 2],
+        [-width / 2, height / 2]
+    ])
+    
+    # Rotation matrix
+    rotation_matrix = np.array([
+        [np.cos(angle_rad), -np.sin(angle_rad)],
+        [np.sin(angle_rad), np.cos(angle_rad)]
+    ])
+    
+    # Rotate the corners
+    rotated_corners = corners @ rotation_matrix.T
+    
+    # Translate the corners to the center
+    translated_corners = rotated_corners + np.array([x_center, y_center])
+    
+    # Plot the bounding box
+    ax.plot(*np.vstack([translated_corners, translated_corners[0]]).T, edgecolor)
+
+def plot_horizontal_bbox(ax, bbox, edgecolor='b'):
+    """
+    Plot a horizontal bounding box.
+    
+    bbox: [x_min, y_min, x_max, y_max]
+    """
+    x_min, y_min, x_max, y_max = bbox
+    corners = np.array([
+        [x_min, y_min],
+        [x_max, y_min],
+        [x_max, y_max],
+        [x_min, y_max]
+    ])
+    
+    # Plot the bounding box
+    ax.plot(*np.vstack([corners, corners[0]]).T, edgecolor)
+
+def plot_boxes(target, target_projected):
+    # Create plot
+    fig, ax = plt.subplots()
+
+    for i in range(len(target)):
+        plot_oriented_bbox(ax, target[i], edgecolor='r')
+        plot_horizontal_bbox(ax, target_projected[i], edgecolor='b')
+
+    # Set limits and show plot
+    ax.set_xlim(0, 256)
+    ax.set_ylim(0, 256)
+    ax.set_aspect('equal')
+    plt.savefig('boxes.png')
+
+
+def plot_str_tensor(str_tensor, center_x, center_y, bbox):
+    # Create plot
+    fig, ax = plt.subplots()
+
+    # Plot the oriented bounding box
+    plot_oriented_bbox(ax, bbox, edgecolor='r')
+
+    # Plot the structure tensor
+    for i in range(len(str_tensor)):
+        plot_oriented_bbox(ax, [center_x[i], center_y[i], 2 * str_tensor[i, 0], 2 * str_tensor[i, 1], str_tensor[i, 2]], edgecolor='b')
+
+    # Set limits and show plot
+    ax.set_xlim(0, 256)
+    ax.set_ylim(0, 256)
+    ax.set_aspect('equal')
+    plt.savefig('str_tensor.png')
+
+
+def compute_bbox_from_structure_tensor(a, b, c, center_x, center_y):
+    """
+    Compute the bounding box from the structure tensor components.
+    
+    a, b, c: Coefficients of the structure tensor.
+    center_x, center_y: Center coordinates.
+    
+    Returns:
+    bbox: [x1, y1, x2, y2]
+    """
+    # Build the structure tensor [[a, c], [c, b]]
+    str_tensor = torch.tensor([[a, c], [c, b]])
+    
+    # Compute eigenvalues and eigenvectors
+    eigvals, eigvecs = torch.linalg.eigh(str_tensor)
+    eigvals = eigvals.real  # Since the structure tensor is real, eigenvalues should be real
+    eigvecs = eigvecs.real  # Eigenvectors will also be real
+    
+    # Sort eigenvalues and eigenvectors in descending order
+    eigvals_sorted, indices = eigvals.sort(dim=-1, descending=True)
+    eigvecs_sorted = eigvecs[:, indices]
+    
+    # Scale eigenvectors by the square root of the eigenvalues
+    scaled_eigvecs = eigvecs_sorted * torch.sqrt(eigvals_sorted)
+    
+    # Compute the four corners of the bounding box
+    corners = torch.tensor([
+        [center_x, center_y] + scaled_eigvecs[:, 0].numpy(),
+        [center_x, center_y] - scaled_eigvecs[:, 0].numpy(),
+        [center_x, center_y] + scaled_eigvecs[:, 1].numpy(),
+        [center_x, center_y] - scaled_eigvecs[:, 1].numpy()
+    ])
+    
+    # Get the bounding box coordinates
+    x_min = corners[:, 0].min()
+    y_min = corners[:, 1].min()
+    x_max = corners[:, 0].max()
+    y_max = corners[:, 1].max()
+    
+    return [x_min, y_min, x_max, y_max]
+
+def plot_structure_tensors_with_bboxes(structure_tensors, bboxes, center_x, center_y):
+    """
+    Plots horizontal bounding boxes and their corresponding structure tensors.
+    
+    structure_tensors: Tensor of shape [N, 3] containing the a, b, c coefficients of the structure matrix.
+    bboxes: Tensor of shape [N, 4] containing the horizontal bounding boxes in the format [x1, y1, x2, y2].
+    center_x: Tensor of shape [N] containing the x coordinates of the centers.
+    center_y: Tensor of shape [N] containing the y coordinates of the centers.
+    """
+    N = structure_tensors.size(0)
+    
+    fig, ax = plt.subplots()
+    
+    for i in range(N):
+        # Get the structure tensor coefficients
+        a, b, c = structure_tensors[i]
+        
+        # Get the corresponding bounding box and center coordinates
+        bbox = bboxes[i]
+        cx, cy = center_x[i], center_y[i]
+        
+        # Plot the horizontal bounding box
+        x1, y1, x2, y2 = bbox
+        rect = plt.Rectangle((x1, y1), x2 - x1, y2 - y1, edgecolor='blue', facecolor='none')
+        ax.add_patch(rect)
+        
+        # Compute the bounding box for the structure tensor
+        #bbox_tensor = compute_bbox_from_structure_tensor(a, b, c, cx, cy)
+        #x1t, y1t, x2t, y2t = bbox_tensor
+        #rect_tensor = plt.Rectangle((x1t, y1t), x2t - x1t, y2t - y1t, edgecolor='red', facecolor='none')
+        #ax.add_patch(rect_tensor)
+        
+        # Plot the eigenvectors multiplied by the square root of the eigenvalues
+        str_tensor = torch.tensor([[a, c], [c, b]])
+        eigvals, eigvecs = torch.linalg.eig(str_tensor)
+        eigvals = eigvals.real
+        eigvecs = eigvecs.real
+        
+        eigvals_sorted, indices = eigvals.sort(dim=-1, descending=True)
+        eigvecs_sorted = eigvecs[:, indices]
+        
+        for j in range(2):
+            vec = eigvecs_sorted[:, j] * torch.sqrt(eigvals_sorted[j])
+            ax.arrow(cx, cy, vec[0].item(), vec[1].item(), head_width=0.1, head_length=0.1, fc='red', ec='red')
+            ax.arrow(cx, cy, -vec[0].item(), -vec[1].item(), head_width=0.1, head_length=0.1, fc='red', ec='red')
+    
+    ax.set_aspect('equal')
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.title('Horizontal Bounding Boxes and Structure Tensors')
+    plt.savefig('structure_tensors_with_bboxes.png')
 
 
 @ROTATED_HEADS.register_module()
-class H2RBoxV2PHead(RotatedAnchorFreeHead):
+class H2RBoxV2PHeadStuctureTensorBackToOriginal(RotatedAnchorFreeHead):
     """Anchor-free head used in `FCOS <https://arxiv.org/abs/1904.01355>`_.
     The FCOS head does not use anchor boxes. Instead bounding boxes are
     predicted at each pixel and a centerness measure is used to suppress
@@ -155,6 +332,117 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         pred_projected = torch.cat((pred_xy1, pred_xy2), -1)
         return pred_projected, target_projected
 
+    def rotate_str_tensor(self, str_tensor, theta):
+        '''
+        Rotate the str_tensor of shape [N, 3], where the last dimension contains the coefficients [a, b, c] of the structure tensor
+        [[a, c], [c, b]] by an angle theta in radians.
+        '''
+        # Define the rotation matrix R_theta
+        cos_theta = torch.cos(theta)
+        sin_theta = torch.sin(theta)
+        
+        R_theta = torch.tensor([[cos_theta, -sin_theta], [sin_theta, cos_theta]], device=str_tensor.device)
+        
+        # Create structure matrix of shape [N, 2, 2] from str_tensor: [N, 3]
+        str_matrix = torch.stack([str_tensor[:, 0], str_tensor[:, 2], str_tensor[:, 2], str_tensor[:, 1]], dim=1).reshape(-1, 2, 2)
+
+        # Rotate the structure matrix
+        R_theta_T = R_theta.transpose(0, 1)  # Transpose of the rotation matrix
+        rotated_matrix = torch.matmul(R_theta.unsqueeze(0), torch.matmul(str_matrix, R_theta_T.unsqueeze(0)))
+
+        # Convert the rotated structure matrix back to [a, b, c] format
+        rotated_str_tensor = torch.stack([rotated_matrix[:, 0, 0], rotated_matrix[:, 1, 1], rotated_matrix[:, 0, 1]], dim=1)
+
+        return rotated_str_tensor
+    
+    def flip_str_tensor_vertical(self, str_tensor):
+        '''
+        Vertically flip the str_tensor of shape [N, 3], where the last dimension contains the coefficients [a, b, c] of the structure tensor
+        [[a, c], [c, b]].
+        '''
+        # Create the vertical flip matrix F_vertical
+        F_vertical = torch.tensor([[1, 0], [0, -1]], dtype=str_tensor.dtype, device=str_tensor.device)
+
+        # Create structure matrix of shape [N, 2, 2] from str_tensor: [N, 3]
+        str_matrix = torch.stack([str_tensor[:, 0], str_tensor[:, 2], str_tensor[:, 2], str_tensor[:, 1]], dim=1).reshape(-1, 2, 2)
+
+        # Perform the vertical flip: F_vertical @ str_matrix @ F_vertical
+        flipped_str_matrix = torch.matmul(torch.matmul(F_vertical, str_matrix), F_vertical)
+
+        # Return the flipped structure matrix as 3 values a, b, c: [N, 2, 2] --> [N, 3]
+        return torch.stack([flipped_str_matrix[:, 0, 0], flipped_str_matrix[:, 1, 1], flipped_str_matrix[:, 0, 1]], dim=1)
+
+    
+    def str_tensor_to_obb(self, center, str_tensor, angle_range='le90'):
+        # Extract individual components from str_tensor
+        a = str_tensor[:, 0]  # shape [N]
+        b = str_tensor[:, 1]  # shape [N]
+        c = str_tensor[:, 2]  # shape [N]
+
+        # Construct the structure tensors
+        structure_tensors = torch.stack([
+            torch.stack([a, c], dim=-1),  # shape [N, 2]
+            torch.stack([c, b], dim=-1)   # shape [N, 2]
+        ], dim=-2)  # shape [N, 2, 2]
+
+        # Calculate the eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = torch.linalg.eigh(structure_tensors)  # eigenvalues shape [N, 2], eigenvectors shape [N, 2, 2]
+
+        # Extract the real parts of the eigenvalues and eigenvectors
+        eigenvalues = torch.abs(eigenvalues.real)  # shape [N, 2]
+        eigenvectors = eigenvectors.real  # shape [N, 2, 2]
+
+        scale = 1.0  # Scale factor for the width and height
+        w = scale * eigenvalues[:, 0]  # shape [N]
+        h = scale * eigenvalues[:, 1]  # shape [N]
+        a = torch.atan2(eigenvectors[:, 1, 1], eigenvectors[:, 0, 1])  # shape [N]
+        a = norm_angle(a, angle_range)
+
+        # Construct the obb tensor [center_x, center_y, width, height, angle]
+        obb = torch.stack([center[:, 0], center[:, 1], 2 * w, 2 * h, a], dim=-1)  # shape [N, 5]
+
+        return obb
+
+    
+    def obb_to_circumscribed_hbb(self, obb):
+        cx, cy, w, h, a = obb[:, 0], obb[:, 1], obb[:, 2], obb[:, 3], obb[:, 4]
+        
+        # Compute the corners relative to the center and dimensions
+        corners = torch.stack([
+            torch.stack([-w/2, -h/2], dim=1),  # bottom-left
+            torch.stack([w/2, -h/2], dim=1),   # bottom-right
+            torch.stack([w/2, h/2], dim=1),    # top-right
+            torch.stack([-w/2, h/2], dim=1)    # top-left
+        ], dim=1)
+
+        # Create the rotation matrix
+        rotation_matrix = torch.stack([
+            torch.cos(a), -torch.sin(a),
+            torch.sin(a), torch.cos(a)
+        ], dim=-1).view(-1, 2, 2)  # shape [N, 2, 2]
+
+        # Rotate the corners
+        rotated_corners = torch.matmul(corners, rotation_matrix.transpose(1, 2))  # shape [N, 4, 2]
+
+        # Translate the corners to the center point
+        rotated_corners[:, :, 0] += cx.unsqueeze(1)  # shape [N, 4]
+        rotated_corners[:, :, 1] += cy.unsqueeze(1)  # shape [N, 4]
+
+        # Find the min and max x and y coordinates
+        min_x, _ = torch.min(rotated_corners[:, :, 0], dim=1)  # shape [N]
+        max_x, _ = torch.max(rotated_corners[:, :, 0], dim=1)  # shape [N]
+        min_y, _ = torch.min(rotated_corners[:, :, 1], dim=1)  # shape [N]
+        max_y, _ = torch.max(rotated_corners[:, :, 1], dim=1)  # shape [N]
+
+        # Calculate the new width and height
+        w_r = max_x - min_x  # shape [N]
+        h_r = max_y - min_y  # shape [N]
+
+        # Construct the circumscribed horizontal bounding boxes [cx, cy, w_r, h_r]
+        hbox = torch.stack([cx, cy, w_r, h_r], dim=1)  # shape [N, 4]
+
+        return hbox
+
     def _init_layers(self):
         """Initialize layers of the head."""
         super()._init_layers()
@@ -201,6 +489,8 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                 and centerness predictions of input feature maps.
         """
         cls_score, bbox_pred, cls_feat, reg_feat = super().forward_single(x)
+
+
         if self.centerness_on_reg:
             centerness = self.conv_centerness(reg_feat)
         else:
@@ -218,8 +508,10 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         else:
             bbox_pred = bbox_pred.exp()
         angle_pred = self.conv_angle(reg_feat)
+
         if self.is_scale_angle:
             angle_pred = self.scale_angle(angle_pred).float()
+        
         return cls_score, bbox_pred, angle_pred, centerness
 
     @force_fp32(
@@ -255,6 +547,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
+
         assert len(cls_scores) == len(bbox_preds) \
                == len(angle_preds) == len(centernesses)
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
@@ -320,23 +613,27 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         if len(pos_inds) > 0:
             pos_points = flatten_points[pos_inds]
 
-            pos_decoded_angle_preds = self.angle_coder.decode(
-                pos_angle_preds, keepdim=True).detach()
+            #pos_decoded_angle_preds = self.angle_coder.decode(
+            #    pos_angle_preds, keepdim=True).detach()
             
             square_mask = torch.zeros_like(pos_labels, dtype=torch.bool)
             for c in self.square_cls:
                 square_mask = torch.logical_or(square_mask, pos_labels == c)
-            pos_decoded_angle_preds[square_mask] = 0
+            #pos_decoded_angle_preds[square_mask] = 0
             target_mask = torch.abs(
                 pos_angle_targets[square_mask]) < torch.pi / 4
             pos_angle_targets[square_mask] = torch.where(
                 target_mask, 0, -torch.pi / 2)
             
-            pos_bbox_preds = torch.cat(
-                [pos_bbox_preds, pos_decoded_angle_preds], dim=-1)
-            pos_bbox_targets = torch.cat([pos_bbox_targets, pos_angle_targets],
-                                         dim=-1)
+            #centers = pos_points + pos_bbox_preds[:, :2]
+            angles_pred = self.str_tensor_to_obb(pos_points, pos_angle_preds)[..., 4].detach()
+            angles_pred[square_mask] = 0
+            
+            # Extract angle from predicted structure tensors and add to bbox predictions
+            pos_bbox_preds = torch.cat([pos_bbox_preds, angles_pred[..., None]], dim=-1)
+            pos_bbox_targets = torch.cat([pos_bbox_targets, pos_angle_targets], dim=-1)
 
+            # Decode bbox predictions and targets (from offsets to coordinates)
             pos_decoded_bbox_preds = self.bbox_coder.decode(
                 pos_points, pos_bbox_preds)
             pos_decoded_bbox_targets = self.bbox_coder.decode(
@@ -347,6 +644,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                                             pos_decoded_bbox_targets),
                     weight=pos_centerness_targets,
                     avg_factor=centerness_denorm)
+            
             loss_centerness = self.loss_centerness(
                 pos_centerness, pos_centerness_targets, avg_factor=num_pos)
                         
@@ -364,6 +662,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                 return_counts=True)
             bmsk = bcnt[bidx] == 2
 
+
             # The reduce all sample points of each object
             ss_info = img_metas[0]['ss']
             rot = ss_info[1]
@@ -373,6 +672,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                     0, idx, pos_angle_preds, 'mean',
                     include_self=False)[bmsk].view(-1, 2,
                                                 pos_angle_preds.shape[-1])
+
             pair_labels = torch.empty(
                 *bid.shape, dtype=pos_labels.dtype,
                 device=bid.device).index_reduce_(
@@ -382,10 +682,17 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             for c in self.square_cls:
                 square_mask = torch.logical_or(square_mask, pair_labels == c)
 
-            angle_ori_preds = self.angle_coder.decode(
-                pair_angle_preds[:, 0], keepdim=True)
-            angle_trs_preds = self.angle_coder.decode(
-                pair_angle_preds[:, 1], keepdim=True)
+            #angle_ori_preds = self.angle_coder.decode(
+            #    pair_angle_preds[:, 0], keepdim=True)
+            #angle_trs_preds = self.angle_coder.decode(
+            #    pair_angle_preds[:, 1], keepdim=True)
+            #angle_ori_preds = pair_angle_preds[:, 0]
+            #angle_trs_preds = pair_angle_preds[:, 1]
+            B, N, _ = pair_angle_preds.shape
+            centers = torch.ones(B, 2, device=pair_angle_preds.device)
+            angle_ori_preds = self.str_tensor_to_obb(centers, pair_angle_preds[:, 0])[..., 4]
+            angle_trs_preds = self.str_tensor_to_obb(centers, pair_angle_preds[:, 1])[..., 4]
+
             if len(pair_angle_preds):
                 if ss_info[0] == 'rot':
                     d_ang = angle_trs_preds - angle_ori_preds - rot
@@ -689,6 +996,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                 are bounding box positions (x, y, w, h, angle) and the
                 6-th column is a score between 0 and 1.
         """
+
         cfg = self.test_cfg if cfg is None else cfg
         assert len(cls_scores) == len(bbox_preds) == len(mlvl_points)
         mlvl_bboxes = []
@@ -704,7 +1012,12 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
 
             bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 4)
             angle_pred = angle_pred.permute(1, 2, 0).reshape(-1, self.angle_coder.encode_size)
-            angle_pred = self.angle_coder.decode(angle_pred, keepdim=True)
+            
+            #angle_pred = self.angle_coder.decode(angle_pred, keepdim=True)
+            # Compute angle from structure tensor
+            pred_obb = self.str_tensor_to_obb(points, angle_pred)
+            angle_pred = pred_obb[:, 4].unsqueeze(-1)
+
             bbox_pred = torch.cat([bbox_pred, angle_pred], dim=1)
             nms_pre = cfg.get('nms_pre', -1)
             if nms_pre > 0 and scores.shape[0] > nms_pre:
@@ -716,6 +1029,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                 centerness = centerness[topk_inds]
             bboxes = self.bbox_coder.decode(
                 points, bbox_pred, max_shape=img_shape)
+            #bboxes[:, 4] = angle_pred.squeeze(-1)
             mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)
             mlvl_centerness.append(centerness)

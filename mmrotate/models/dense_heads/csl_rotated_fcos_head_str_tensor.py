@@ -59,6 +59,36 @@ class CSLRFCOSHead(RotatedFCOSHead):
             self.feat_channels, self.coding_len, 3, padding=1)
         self.scales = nn.ModuleList([Scale(1.0) for _ in self.strides])
 
+    def str_tensor_to_obb(self, center, str_tensor, angle_range='le90'):
+        # Extract individual components from str_tensor
+        a = str_tensor[:, 0]  # shape [N]
+        b = str_tensor[:, 1]  # shape [N]
+        c = str_tensor[:, 2]  # shape [N]
+
+        # Construct the structure tensors
+        structure_tensors = torch.stack([
+            torch.stack([a, c], dim=-1),  # shape [N, 2]
+            torch.stack([c, b], dim=-1)   # shape [N, 2]
+        ], dim=-2)  # shape [N, 2, 2]
+
+        # Calculate the eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = torch.linalg.eigh(structure_tensors)  # eigenvalues shape [N, 2], eigenvectors shape [N, 2, 2]
+
+        # Extract the real parts of the eigenvalues and eigenvectors
+        eigenvalues = torch.abs(eigenvalues.real)  # shape [N, 2]
+        eigenvectors = eigenvectors.real  # shape [N, 2, 2]
+
+        scale = 1.0  # Scale factor for the width and height
+        w = scale * eigenvalues[:, 0]  # shape [N]
+        h = scale * eigenvalues[:, 1]  # shape [N]
+        a = torch.atan2(eigenvectors[:, 1, 1], eigenvectors[:, 0, 1])  # shape [N]
+        a = norm_angle(a, angle_range)
+
+        # Construct the obb tensor [center_x, center_y, width, height, angle]
+        obb = torch.stack([center[:, 0], center[:, 1], 2 * w, 2 * h, a], dim=-1)  # shape [N, 5]
+
+        return obb
+        
     @force_fp32(
         apply_to=('cls_scores', 'bbox_preds', 'angle_preds', 'centernesses'))
     def loss(self,

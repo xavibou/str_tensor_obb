@@ -59,11 +59,12 @@ model = dict(
         nms_pre=2000,
         min_bbox_size=0,
         score_thr=0.05,
-        nms=dict(iou_thr=0.1),
+        nms=dict(iou_thr=0.01),
         max_per_img=2000))
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
@@ -78,10 +79,40 @@ train_pipeline = [
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-data = dict(
-    train=dict(pipeline=train_pipeline, version=angle_version),
-    val=dict(version=angle_version),
-    test=dict(version=angle_version))
+
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(1024, 1024),
+        flip=False,
+        transforms=[
+            dict(type='RResize'),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=64),
+            dict(type='DefaultFormatBundle'),
+            dict(type='Collect', keys=['img'])
+        ])
+]
+#data = dict(
+#    train=dict(pipeline=train_pipeline, version=angle_version),
+#    val=dict(version=angle_version),
+#    test=dict(version=angle_version))
+
+data_root = 'data/DOTA/split_ss_dota1_0/' 
+data = dict( 
+    train=dict(type='DOTAWSOODDataset', pipeline=train_pipeline, 
+            ann_file=data_root + 'trainval/annfiles/', 
+            img_prefix=data_root + 'trainval/images/', 
+            version=angle_version), 
+    val=dict(type='DOTAWSOODDataset', pipeline=test_pipeline, 
+            ann_file=data_root + 'trainval/annfiles/', 
+            img_prefix=data_root + 'trainval/images/', 
+            version=angle_version), 
+    test=dict(type='DOTAWSOODDataset', pipeline=test_pipeline, 
+            ann_file=data_root + 'test/images/', 
+            img_prefix=data_root + 'test/images/', 
+            version=angle_version)) 
 
 optimizer = dict(
     _delete_=True,

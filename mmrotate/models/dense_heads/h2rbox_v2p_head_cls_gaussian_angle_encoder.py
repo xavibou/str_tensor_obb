@@ -14,7 +14,7 @@ INF = 1e8
 
 
 @ROTATED_HEADS.register_module()
-class H2RBoxV2PHead(RotatedAnchorFreeHead):
+class H2RBoxV2PHeadCLSAngleEncoder(RotatedAnchorFreeHead):
     """Anchor-free head used in `FCOS <https://arxiv.org/abs/1904.01355>`_.
     The FCOS head does not use anchor boxes. Instead bounding boxes are
     predicted at each pixel and a centerness measure is used to suppress
@@ -71,11 +71,17 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                  scale_angle=False,
                  square_cls=[],
                  resize_cls=[],
+                 #angle_coder=dict(
+                 #    type='PSCCoder', 
+                 #    angle_version='le90', 
+                 #    dual_freq=False, 
+                 #    thr_mod=0),
                  angle_coder=dict(
-                     type='PSCCoder', 
-                     angle_version='le90', 
-                     dual_freq=False, 
-                     thr_mod=0),
+                     type='CSLCoder',
+                     angle_version='le90',
+                     omega=1,
+                     window='gaussian',
+                     radius=1),
                  loss_cls=dict(
                      type='FocalLoss',
                      use_sigmoid=True,
@@ -109,6 +115,8 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
         self.square_cls = square_cls
         self.resize_cls = resize_cls
         self.angle_coder = build_bbox_coder(angle_coder)
+        self.angle_coder.encode_size = self.angle_coder.coding_len
+
         super().__init__(
             num_classes,
             in_channels,
@@ -321,7 +329,7 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
             pos_points = flatten_points[pos_inds]
 
             pos_decoded_angle_preds = self.angle_coder.decode(
-                pos_angle_preds, keepdim=True).detach()
+                pos_angle_preds).detach()
             
             square_mask = torch.zeros_like(pos_labels, dtype=torch.bool)
             for c in self.square_cls:
@@ -331,11 +339,9 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                 pos_angle_targets[square_mask]) < torch.pi / 4
             pos_angle_targets[square_mask] = torch.where(
                 target_mask, 0, -torch.pi / 2)
-            
-            pos_bbox_preds = torch.cat(
-                [pos_bbox_preds, pos_decoded_angle_preds], dim=-1)
-            pos_bbox_targets = torch.cat([pos_bbox_targets, pos_angle_targets],
-                                         dim=-1)
+
+            pos_bbox_preds = torch.cat([pos_bbox_preds, pos_decoded_angle_preds[...,None]], dim=-1)
+            pos_bbox_targets = torch.cat([pos_bbox_targets, pos_angle_targets],dim=-1)
 
             pos_decoded_bbox_preds = self.bbox_coder.decode(
                 pos_points, pos_bbox_preds)
@@ -383,9 +389,9 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
                 square_mask = torch.logical_or(square_mask, pair_labels == c)
 
             angle_ori_preds = self.angle_coder.decode(
-                pair_angle_preds[:, 0], keepdim=True)
+                pair_angle_preds[:, 0])
             angle_trs_preds = self.angle_coder.decode(
-                pair_angle_preds[:, 1], keepdim=True)
+                pair_angle_preds[:, 1])
             if len(pair_angle_preds):
                 if ss_info[0] == 'rot':
                     d_ang = angle_trs_preds - angle_ori_preds - rot
@@ -704,8 +710,8 @@ class H2RBoxV2PHead(RotatedAnchorFreeHead):
 
             bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 4)
             angle_pred = angle_pred.permute(1, 2, 0).reshape(-1, self.angle_coder.encode_size)
-            angle_pred = self.angle_coder.decode(angle_pred, keepdim=True)
-            bbox_pred = torch.cat([bbox_pred, angle_pred], dim=1)
+            angle_pred = self.angle_coder.decode(angle_pred)
+            bbox_pred = torch.cat([bbox_pred, angle_pred[...,None]], dim=-1)
             nms_pre = cfg.get('nms_pre', -1)
             if nms_pre > 0 and scores.shape[0] > nms_pre:
                 max_scores, _ = (scores * centerness[:, None]).max(dim=1)
