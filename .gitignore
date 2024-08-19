@@ -3,6 +3,8 @@ work_dirs/*
 __pycache__/
 build/
 build/*
+data/
+data/*
 
 
 # Byte-compiled / optimized / DLL files
