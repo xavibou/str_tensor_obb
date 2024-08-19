@@ -1,3 +1,10 @@
+work_dirs/
+work_dirs/*
+__pycache__/
+build/
+build/*
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

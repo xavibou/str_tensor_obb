@@ -265,7 +265,7 @@ class H2RBoxV2PHeadStuctureTensor(RotatedAnchorFreeHead):
                      use_sigmoid=True,
                      loss_weight=1.0),
                  loss_ss_symmetry=dict(
-                     type='SmoothL1Loss', loss_weight=0.2, beta=0.1),
+                     type='SmoothL1Loss', loss_weight=1.0, beta=0.1),
                  norm_cfg=dict(type='GN', num_groups=32, requires_grad=True),
                  init_cfg=dict(
                      type='Normal',
@@ -626,7 +626,7 @@ class H2RBoxV2PHeadStuctureTensor(RotatedAnchorFreeHead):
                 target_mask, 0, -torch.pi / 2)
             
             #centers = pos_points + pos_bbox_preds[:, :2]
-            angles_pred = self.str_tensor_to_obb(pos_points, pos_angle_preds)[..., 4]
+            angles_pred = self.str_tensor_to_obb(pos_points, pos_angle_preds)[..., 4].detach()
             angles_pred[square_mask] = 0
             
             # Extract angle from predicted structure tensors and add to bbox predictions
@@ -672,7 +672,7 @@ class H2RBoxV2PHeadStuctureTensor(RotatedAnchorFreeHead):
                     0, idx, pos_angle_preds, 'mean',
                     include_self=False)[bmsk].view(-1, 2,
                                                 pos_angle_preds.shape[-1])
-            
+
             pair_labels = torch.empty(
                 *bid.shape, dtype=pos_labels.dtype,
                 device=bid.device).index_reduce_(
@@ -686,12 +686,8 @@ class H2RBoxV2PHeadStuctureTensor(RotatedAnchorFreeHead):
             #    pair_angle_preds[:, 0], keepdim=True)
             #angle_trs_preds = self.angle_coder.decode(
             #    pair_angle_preds[:, 1], keepdim=True)
-            angle_ori_preds = pair_angle_preds[:, 0]
-            angle_trs_preds = pair_angle_preds[:, 1]
 
             # normalize the structure tensor
-            angle_ori_preds = angle_ori_preds / torch.norm(angle_ori_preds, p=2, dim=1, keepdim=True)
-            angle_trs_preds = angle_trs_preds / torch.norm(angle_trs_preds, p=2, dim=1, keepdim=True)
 
             if len(pair_angle_preds):
                 if ss_info[0] == 'rot':
@@ -703,6 +699,8 @@ class H2RBoxV2PHeadStuctureTensor(RotatedAnchorFreeHead):
                     #d_ang = angle_ori_preds + angle_trs_preds
                     angle_ori_preds = self.flip_str_tensor_vertical(angle_ori_preds)
                 
+                angle_trs_preds = angle_trs_preds / torch.norm(angle_trs_preds, p=2, dim=1, keepdim=True)
+                angle_ori_preds = angle_ori_preds / torch.norm(angle_ori_preds, p=2, dim=1, keepdim=True)
                 
                 #d_ang = (d_ang + torch.pi / 2) % torch.pi - torch.pi / 2
                 #d_ang[square_mask] = 0
@@ -1055,7 +1053,6 @@ class H2RBoxV2PHeadStuctureTensor(RotatedAnchorFreeHead):
         # BG cat_id: num_class
         mlvl_scores = torch.cat([mlvl_scores, padding], dim=1)
         mlvl_centerness = torch.cat(mlvl_centerness)
-        
         det_bboxes, det_labels = multiclass_nms_rotated(
             mlvl_bboxes,
             mlvl_scores,
@@ -1067,7 +1064,6 @@ class H2RBoxV2PHeadStuctureTensor(RotatedAnchorFreeHead):
             det_bboxes[det_labels == id, 4] = 0
         for id in self.resize_cls:
             det_bboxes[det_labels == id, 2:4] *= 0.85
-        
         return det_bboxes, det_labels
 
     @force_fp32(

@@ -16,7 +16,7 @@ import torch
 from mmcv.ops import nms_rotated
 from mmdet.datasets.custom import CustomDataset
 
-from mmrotate.core import eval_rbbox_map, obb2poly_np, poly2obb_np
+from mmrotate.core import eval_rbbox_map, obb2poly_np, poly2obb_np, eval_angle_error
 from .builder import ROTATED_DATASETS
 
 
@@ -54,6 +54,7 @@ class DOTADataset(CustomDataset):
     def __len__(self):
         """Total number of samples of data."""
         return len(self.data_infos)
+        #return 2000
 
     def load_annotations(self, ann_folder):
         """
@@ -169,7 +170,7 @@ class DOTADataset(CustomDataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thr=0.5,
                  scale_ranges=None,
-                 nproc=4):
+                 nproc=12):
         """Evaluate the dataset.
 
         Args:
@@ -208,6 +209,17 @@ class DOTADataset(CustomDataset):
                 logger=logger,
                 nproc=nproc)
             eval_results['mAP'] = mean_ap
+
+            angle_error = eval_angle_error(
+                results,
+                annotations,
+                dataset=self.CLASSES,
+                iou_thr=iou_thr,
+                nproc=nproc,
+                logger=logger)
+            
+            eval_results['angle_error_mae'] = angle_error['MAE']
+            eval_results['angle_error_rmse'] = angle_error['RMSE']
         else:
             raise NotImplementedError
 

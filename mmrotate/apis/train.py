@@ -105,7 +105,7 @@ def train_detector(model,
     if validate:
         val_dataloader_default_args = dict(
             samples_per_gpu=1,
-            workers_per_gpu=2,
+            workers_per_gpu=8,
             dist=distributed,
             shuffle=False,
             persistent_workers=False)
@@ -142,3 +142,75 @@ def train_detector(model,
     elif cfg.load_from:
         runner.load_checkpoint(cfg.load_from)
     runner.run(data_loaders, cfg.workflow)
+
+
+def validate_detector(model,
+                      cfg,
+                      distributed=False,
+                      timestamp=None,
+                      meta=None):
+
+    cfg = compat_cfg(cfg)
+    logger = get_root_logger(log_level=cfg.log_level)
+
+    # put model on gpus
+    if distributed:
+        find_unused_parameters = cfg.get('find_unused_parameters', False)
+        model = build_ddp(
+            model,
+            cfg.device,
+            device_ids=[int(os.environ['LOCAL_RANK'])],
+            broadcast_buffers=False,
+            find_unused_parameters=find_unused_parameters)
+    else:
+        model = build_dp(model, cfg.device, device_ids=cfg.gpu_ids)
+
+    # build runner
+    optimizer = build_optimizer(model, cfg.optimizer)
+    
+    runner = build_runner(
+        cfg.runner,
+        default_args=dict(
+            model=model,
+            optimizer=optimizer,
+            work_dir=cfg.work_dir,
+            logger=logger,
+            meta=meta))
+
+    runner.timestamp = timestamp
+
+    # register eval hooks
+    val_dataloader_default_args = dict(
+        samples_per_gpu=32,
+        workers_per_gpu=16,
+        dist=distributed,
+        shuffle=False,
+        persistent_workers=False)
+
+    val_dataloader_args = {
+        **val_dataloader_default_args,
+        **cfg.data.get('val_dataloader', {})
+    }
+
+    # Support batch_size > 1 in validation
+    if val_dataloader_args['samples_per_gpu'] > 1:
+        # Replace 'ImageToTensor' to 'DefaultFormatBundle'
+        cfg.data.val.pipeline = replace_ImageToTensor(
+            cfg.data.val.pipeline)
+    val_dataset = build_dataset(cfg.data.val, dict(test_mode=True))
+    val_dataloader = build_dataloader(val_dataset, **val_dataloader_args)
+
+    eval_cfg = cfg.get('evaluation', {})
+    eval_cfg['by_epoch'] = cfg.runner['type'] != 'IterBasedRunner'
+    eval_hook = DistEvalHook if distributed else EvalHook
+    runner.register_hook(
+        eval_hook(val_dataloader, **eval_cfg), priority='LOW')
+
+    # load checkpoint
+    if cfg.resume_from:
+        runner.resume(cfg.resume_from)
+    elif cfg.load_from:
+        runner.load_checkpoint(cfg.load_from)
+
+    # run only validation
+    runner.run([val_dataloader], [('val', 1)])

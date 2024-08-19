@@ -10,6 +10,7 @@ from mmrotate.core import build_bbox_coder, multiclass_nms_rotated
 from ..builder import ROTATED_HEADS, build_loss
 from .rotated_anchor_free_head import RotatedAnchorFreeHead
 from mmrotate.core.bbox.transforms import norm_angle
+import numpy as np
 INF = 1e8
 
 
@@ -104,6 +105,7 @@ class StructureTensorFCOSHead(RotatedAnchorFreeHead):
         self.separate_angle = separate_angle
         self.is_scale_angle = scale_angle
         self.angle_coder = build_bbox_coder(angle_coder)
+        self.angle_coder.encode_size = 3
         super().__init__(
             num_classes,
             in_channels,
@@ -205,49 +207,57 @@ class StructureTensorFCOSHead(RotatedAnchorFreeHead):
         eigenvalues = torch.abs(eigenvalues.real)  # shape [N, 2]
         eigenvectors = eigenvectors.real  # shape [N, 2, 2]
 
-        scale = 1.0  # Scale factor for the width and height
-        w = scale * eigenvalues[:, 0]  # shape [N]
-        h = scale * eigenvalues[:, 1]  # shape [N]
+        w = 2 * eigenvalues[:, 0] #+ 1e-2  # shape [N]
+        h = 2 * eigenvalues[:, 1]  # shape [N]
         a = torch.atan2(eigenvectors[:, 1, 1], eigenvectors[:, 0, 1])  # shape [N]
         a = norm_angle(a, angle_range)
 
         # Construct the obb tensor [center_x, center_y, width, height, angle]
-        obb = torch.stack([center[:, 0], center[:, 1], 2 * w, 2 * h, a], dim=-1)  # shape [N, 5]
+        obb = torch.stack([center[:, 0], center[:, 1], w, h, a], dim=-1)  # shape [N, 5]
 
         return obb
     
-    def angle_to_str_tensor(self, angle):
-        # angle: tensor of shape [N], the angle in radians
-        
-        # create eigenvalues: tensor of shape [N, 2], the eigenvalues [lambda1, lambda2] are [2.0, 1.0]
-        eigenvalues = torch.tensor([[2.0, 1.0]], device=angle.device).expand(angle.shape[0], -1)
-        
-        # Ensure the eigenvalues are positive
-        eigenvalues = torch.abs(eigenvalues)
-        
-        # Calculate the components of the rotation matrix R(theta)
+
+    def obb_to_str_tensor(self, angle, width, height):
+        # Ensure input tensors are of shape [N, 1]
+        angle = angle.squeeze(1)
+        width = width.squeeze(1)
+        height = height.squeeze(1)
+
+        equal_indices = width - height < 1e-2
+        width[equal_indices] += 1e-2
+        mod_angle = norm_angle(angle, 'le45')
+        angle[equal_indices] = mod_angle[equal_indices]
+
+        # Compute cosine and sine of the angles
         cos_theta = torch.cos(angle)
         sin_theta = torch.sin(angle)
         
+        # Create the rotation matrix for each angle
         R = torch.stack([
-            torch.stack([cos_theta, -sin_theta], dim=-1),
-            torch.stack([sin_theta, cos_theta], dim=-1)
-        ], dim=-2)  # shape [N, 2, 2]
+            torch.stack([cos_theta, -sin_theta], dim=1),
+            torch.stack([sin_theta, cos_theta], dim=1)
+        ], dim=1)
+
+        # Eigenvalues (width and height) need to be of shape [N, 2]
+        eigenvalues = torch.stack([width, height / 2], dim=1)
+
+        # Create diagonal matrix of eigenvalues for each batch
+        Lambda = torch.stack([
+            torch.diag(eigenvalues[i])
+            for i in range(eigenvalues.shape[0])
+        ])
         
-        # Diagonal matrix of eigenvalues
-        D = torch.diag_embed(eigenvalues)  # shape [N, 2, 2]
+        # Compute structure tensor T for each angle
+        T = torch.bmm(R, torch.bmm(Lambda, R.transpose(1, 2)))
         
-        # Structure tensor T = R D R^T
-        RT = R.transpose(-1, -2)
-        T = torch.matmul(R, torch.matmul(D, RT))  # shape [N, 2, 2]
+        # Extract the components of the structure tensor
+        a = T[:, 0, 0]
+        b = T[:, 1, 1]
+        c = T[:, 0, 1]  # Since T is symmetric, T[0, 1] == T[1, 0]
         
-        # Extract a, b, c from the structure tensor T
-        a = T[:, 0, 0]  # shape [N]
-        b = T[:, 1, 1]  # shape [N]
-        c = T[:, 0, 1]  # shape [N]
-        
-        str_tensor = torch.stack([a, b, c], dim=-1)  # shape [N, 3]
-        return str_tensor
+        return torch.stack([a, b, c], dim=1)
+
 
     @force_fp32(
         apply_to=('cls_scores', 'bbox_preds', 'angle_preds', 'centernesses'))
@@ -372,8 +382,34 @@ class StructureTensorFCOSHead(RotatedAnchorFreeHead):
                 weight=pos_centerness_targets,
                 avg_factor=centerness_denorm)
             if self.separate_angle:
-                pos_angle_targets = self.angle_to_str_tensor(pos_angle_targets)
-                #pos_angle_targets = self.angle_coder.encode(pos_angle_targets)
+
+                '''
+                wh = pos_bbox_targets[:, :2] + pos_bbox_targets[:, 2:]  # Compute width and height 
+                gt_angles = pos_angle_targets.T
+                str_tensors = self.obb_to_str_tensor(pos_angle_targets, wh[:, 0, None], wh[:, 1, None])
+                recovered_angles = self.str_tensor_to_obb(pos_bbox_targets[:,:2], str_tensors)[:, 4]
+                #error = torch.sum(torch.abs(gt_angles - recovered_angles)) / len(recovered_angles)
+                
+                #width = pos_bbox_targets[:, 2, None]
+                #height = pos_bbox_targets[:, 3, None]
+                #swap_indices = height > width
+                #recovered_angles[swap_indices.squeeze()] += np.pi / 2
+                
+                gt_angles = norm_angle(gt_angles, angle_range='le90')
+                recovered_angles = norm_angle(recovered_angles, angle_range='le90')
+
+                error = torch.abs(gt_angles - recovered_angles)
+                
+                breakpoint()
+                #print()
+                #print('Error: {}', torch.sum(error).item() / len(recovered_angles))
+                #print()
+                '''
+                
+                
+                
+                wh = pos_bbox_targets[:, :2] + pos_bbox_targets[:, 2:]  # Compute width and height 
+                pos_angle_targets = self.obb_to_str_tensor(pos_angle_targets, wh[:, 0, None], wh[:, 1, None])
                 loss_angle = self.loss_angle(
                     pos_angle_preds, pos_angle_targets, avg_factor=num_pos)
             loss_centerness = self.loss_centerness(
@@ -682,6 +718,7 @@ class StructureTensorFCOSHead(RotatedAnchorFreeHead):
                 -1, self.angle_coder.encode_size)
             # angle_pred = angle_pred.permute(1, 2, 0).reshape(-1, 1)
             decoded_angle = self.str_tensor_to_obb(points, angle_pred)[:, 4]
+
             #decoded_angle = self.angle_coder.decode(angle_pred, keepdim=True)
             bbox_pred = torch.cat([bbox_pred, decoded_angle[..., None]], dim=-1)
             # bbox_pred = torch.cat([bbox_pred, angle_pred], dim=1)

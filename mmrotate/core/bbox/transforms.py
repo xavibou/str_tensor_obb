@@ -863,6 +863,10 @@ def norm_angle(angle, angle_range):
         return (angle + np.pi / 4) % np.pi - np.pi / 4
     elif angle_range == 'le90':
         return (angle + np.pi / 2) % np.pi - np.pi / 2
+    elif angle_range == 'le45':
+        # normalize between 0 and 45 degrees (pi/4)
+        angle = angle % (torch.pi / 2)  # Bring the angle into the range [0, π/2)
+        return torch.where(angle > torch.pi / 4, angle - torch.pi / 2, angle)
     else:
         print('Not yet implemented.')
 

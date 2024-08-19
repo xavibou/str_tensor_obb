@@ -165,36 +165,36 @@ def main():
     test_dataloader_default_args = dict(
         samples_per_gpu=1, workers_per_gpu=2, dist=distributed, shuffle=False)
 
-    # in case the test dataset is concatenated
-    if isinstance(cfg.data.test, dict):
-        cfg.data.test.test_mode = True
-        if 'samples_per_gpu' in cfg.data.test:
-            warnings.warn('`samples_per_gpu` in `test` field of '
+    # Change from test dataset to validation dataset
+    if isinstance(cfg.data.val, dict):
+        cfg.data.val.test_mode = True
+        if 'samples_per_gpu' in cfg.data.val:
+            warnings.warn('`samples_per_gpu` in `val` field of '
                           'data will be deprecated, you should'
-                          ' move it to `test_dataloader` field')
+                          ' move it to `val_dataloader` field')
             test_dataloader_default_args['samples_per_gpu'] = \
-                cfg.data.test.pop('samples_per_gpu')
+                cfg.data.val.pop('samples_per_gpu')
         if test_dataloader_default_args['samples_per_gpu'] > 1:
             # Replace 'ImageToTensor' to 'DefaultFormatBundle'
-            cfg.data.test.pipeline = replace_ImageToTensor(
-                cfg.data.test.pipeline)
-    elif isinstance(cfg.data.test, list):
-        for ds_cfg in cfg.data.test:
+            cfg.data.val.pipeline = replace_ImageToTensor(
+                cfg.data.val.pipeline)
+    elif isinstance(cfg.data.val, list):
+        for ds_cfg in cfg.data.val:
             ds_cfg.test_mode = True
             if 'samples_per_gpu' in ds_cfg:
-                warnings.warn('`samples_per_gpu` in `test` field of '
+                warnings.warn('`samples_per_gpu` in `val` field of '
                               'data will be deprecated, you should'
-                              ' move it to `test_dataloader` field')
+                              ' move it to `val_dataloader` field')
         samples_per_gpu = max(
-            [ds_cfg.pop('samples_per_gpu', 1) for ds_cfg in cfg.data.test])
+            [ds_cfg.pop('samples_per_gpu', 1) for ds_cfg in cfg.data.val])
         test_dataloader_default_args['samples_per_gpu'] = samples_per_gpu
         if samples_per_gpu > 1:
-            for ds_cfg in cfg.data.test:
+            for ds_cfg in cfg.data.val:
                 ds_cfg.pipeline = replace_ImageToTensor(ds_cfg.pipeline)
 
     test_loader_cfg = {
         **test_dataloader_default_args,
-        **cfg.data.get('test_dataloader', {})
+        **cfg.data.get('val_dataloader', {})
     }
 
     rank, _ = get_dist_info()
@@ -205,7 +205,7 @@ def main():
         json_file = osp.join(args.work_dir, f'eval_{timestamp}.json')
 
     # build the dataloader
-    dataset = build_dataset(cfg.data.test)
+    dataset = build_dataset(cfg.data.val)
     data_loader = build_dataloader(dataset, **test_loader_cfg)
 
     # build the model and load checkpoint

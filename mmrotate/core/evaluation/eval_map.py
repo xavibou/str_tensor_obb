@@ -245,6 +245,177 @@ def eval_rbbox_map(det_results,
 
     return mean_ap, eval_results
 
+def normalize_angle(angle):
+    """
+    Normalize an angle to the range [-pi/2, pi/2].
+    """
+    angle = (angle + np.pi) % (2 * np.pi) - np.pi
+    if angle > np.pi / 2:
+        angle -= np.pi
+    elif angle < -np.pi / 2:
+        angle += np.pi
+    return angle
+
+def angle_error(theta_pred, theta_gt):
+    """
+    Compute the angle prediction error, adjusted for periodicity.
+    """
+    delta_theta = theta_pred - theta_gt
+    delta_theta = normalize_angle(delta_theta)
+    return np.abs(delta_theta)
+
+def eval_angle_error(det_results,
+                      annotations,
+                      iou_thr=0.5,
+                      dataset=None,
+                      logger=None,
+                      nproc=4):
+    """Evaluate angle errors of a rotated dataset.
+
+    Args:
+        det_results (list[list]): [[cls1_det, cls2_det, ...], ...].
+            The outer list indicates images, and the inner list indicates
+            per-class detected bboxes.
+        annotations (list[dict]): Ground truth annotations where each item of
+            the list indicates an image. Keys of annotations are:
+
+            - `bboxes`: numpy array of shape (n, 5)
+            - `labels`: numpy array of shape (n, )
+            - `bboxes_ignore` (optional): numpy array of shape (k, 5)
+            - `labels_ignore` (optional): numpy array of shape (k, )
+        iou_thr (float): IoU threshold to be considered as matched.
+            Default: 0.5.
+        dataset (list[str] | str | None): Dataset name or dataset classes.
+        logger (logging.Logger | str | None): The way to print the angle error
+            summary. See `mmcv.utils.print_log()` for details. Default: None.
+        nproc (int): Processes used for computing TP and FP.
+            Default: 4.
+
+    Returns:
+        dict: {'MAE': mean_absolute_error, 'RMSE': root_mean_squared_error}
+    """
+    assert len(det_results) == len(annotations)
+
+    num_imgs = len(det_results)
+    num_classes = len(det_results[0])  # positive class num
+
+    pool = get_context('spawn').Pool(nproc)
+    all_errors_per_class = []
+    tp_counts = []
+
+    label_names = dataset
+
+    skip_classes = {'baseball-diamond', 'storage-tank', 'roundabout'}
+
+    for i in range(num_classes):
+        if label_names[i] in skip_classes:
+            all_errors_per_class.append({'MAE': 0, 'RMSE': 0})
+            tp_counts.append(0)
+            continue
+
+        # get gt and det bboxes of this class
+        cls_dets, cls_gts, cls_gts_ignore = get_cls_results(
+            det_results, annotations, i)
+
+        # compute tp and fp for each image with multiple processes
+        tpfp = pool.starmap(
+            tpfp_default,
+            zip(cls_dets, cls_gts, cls_gts_ignore,
+                [iou_thr for _ in range(num_imgs)],
+                [None for _ in range(num_imgs)]))
+        tp, fp = tuple(zip(*tpfp))
+
+        all_errors = []
+        preds = []
+        gts = []
+        tp_count = 0
+        
+        for img_id in range(num_imgs):
+            det_bboxes = np.array(cls_dets[img_id])
+            gt_bboxes = np.array(cls_gts[img_id])
+            tp_bboxes = det_bboxes[np.where(tp[img_id][0] == 1)]
+            tp_count += len(tp_bboxes)
+
+            for tb in tp_bboxes:
+                iou_max_idx = np.argmax(box_iou_rotated(
+                    torch.from_numpy(tb[np.newaxis, :]).float(),
+                    torch.from_numpy(gt_bboxes).float()).numpy())
+                gt_angle = gt_bboxes[iou_max_idx, 4]
+                pred_angle = tb[4]
+                #all_errors.append(angle_error(pred_angle + 90 * np.pi/180, gt_angle))
+                all_errors.append(angle_error(pred_angle, gt_angle))
+                preds.append(pred_angle)
+                gts.append(gt_angle)
+        
+        all_errors = np.array(all_errors)
+        mae = np.mean(all_errors) if len(all_errors) > 0 else 0
+        rmse = np.sqrt(np.mean(all_errors ** 2)) if len(all_errors) > 0 else 0
+
+        all_errors_per_class.append({'MAE': mae, 'RMSE': rmse})
+        tp_counts.append(tp_count)
+
+    pool.close()
+
+    # Calculate overall MAE and RMSE
+
+    # concatenate all errors of each class
+    valid_errors_mae = [cls['MAE'] for cls, label in zip(all_errors_per_class, label_names) if label not in skip_classes]
+    valid_errors_rmse = [cls['RMSE'] for cls, label in zip(all_errors_per_class, label_names) if label not in skip_classes]
+
+    overall_mae = np.mean(valid_errors_mae) if valid_errors_mae else 0
+    overall_rmse = np.sqrt(np.mean([err ** 2 for err in valid_errors_rmse])) if valid_errors_rmse else 0
+    all_errors_per_class.append({'MAE': overall_mae, 'RMSE': overall_rmse})
+    tp_counts.append(sum(tp_counts))
+
+    # Print the angle error summary
+    print_angle_error_summary(all_errors_per_class, tp_counts, dataset, logger=logger, skip_classes=skip_classes)
+
+    return {'MAE': overall_mae, 'RMSE': overall_rmse}
+
+def print_angle_error_summary(angle_errors, tp_counts, dataset=None, logger=None, skip_classes=None):
+    """Print angle error results of each class.
+
+    A table will be printed to show the MAE/RMSE of each class and the TP count.
+
+    Args:
+        angle_errors (list[dict]): Calculated from `eval_angle_error()`.
+        tp_counts (list[int]): True positive counts for each class.
+        dataset (list[str] | str | None): Dataset name or dataset classes.
+        logger (logging.Logger | str | None): The way to print the angle error
+            summary. See `mmcv.utils.print_log()` for details. Default: None.
+        skip_classes (set[str]): Classes to be skipped in the evaluation.
+    """
+
+    if logger == 'silent':
+        return
+
+    num_classes = len(angle_errors) - 1  # Last element is overall
+
+    if dataset is None:
+        label_names = [str(i) for i in range(num_classes)]
+    else:
+        label_names = dataset
+        num_classes = len(dataset)
+
+    header = ['class', 'MAE', 'RMSE', 'TP Count']
+    table_data = [header]
+    for i in range(num_classes):
+        if label_names[i] in skip_classes:
+            continue
+        row_data = [
+            label_names[i], f"{angle_errors[i]['MAE']:.3f}", f"{angle_errors[i]['RMSE']:.3f}", tp_counts[i]
+        ]
+        table_data.append(row_data)
+
+    # Append the overall values at the end
+    overall = angle_errors[-1]
+    row_data = ['Overall', f"{overall['MAE']:.3f}", f"{overall['RMSE']:.3f}", tp_counts[-1]]
+    table_data.append(row_data)
+
+    table = AsciiTable(table_data)
+    table.inner_footing_row_border = True
+    print_log('\n' + table.table, logger=logger)
+
 
 def print_map_summary(mean_ap,
                       results,
@@ -291,6 +462,7 @@ def print_map_summary(mean_ap,
         label_names = [str(i) for i in range(num_classes)]
     else:
         label_names = dataset
+        num_classes = len(dataset)
 
     if not isinstance(mean_ap, list):
         mean_ap = [mean_ap]
