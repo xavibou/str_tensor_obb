@@ -15,7 +15,7 @@ INF = 1e8
 
 
 @ROTATED_HEADS.register_module()
-class StructureTensorFCOSHead(RotatedAnchorFreeHead):
+class StructureTensorFCOSHeadSolution2(RotatedAnchorFreeHead):
     """Anchor-free head used in `FCOS <https://arxiv.org/abs/1904.01355>`_.
     The FCOS head does not use anchor boxes. Instead bounding boxes are
     predicted at each pixel and a centerness measure is used to suppress
@@ -412,7 +412,7 @@ class StructureTensorFCOSHead(RotatedAnchorFreeHead):
                 pos_angle_targets = self.angle_coder.encode(pos_angle_targets, wh[:, 0, None], wh[:, 1, None])
                 #pos_angle_targets = self.obb_to_str_tensor(pos_angle_targets, wh[:, 0, None], wh[:, 1, None])
                 loss_angle = self.loss_angle(
-                    pos_angle_preds, pos_angle_targets, avg_factor=num_pos)
+                    pos_angle_preds, pos_angle_targets)
             loss_centerness = self.loss_centerness(
                 pos_centerness, pos_centerness_targets, avg_factor=num_pos)
         else:

@@ -29,6 +29,7 @@ from .h2rbox_v2p_head_str_tensor_back_to_original import H2RBoxV2PHeadStuctureTe
 from .h2rbox_v2p_head_cls_gaussian_angle_encoder import H2RBoxV2PHeadCLSAngleEncoder
 from .h2rbox_head_str_tensor import H2RBoxVHeadStuctureTensor
 from .str_tensor_rotated_fcos_head import StructureTensorFCOSHead
+from .str_tensor_rotated_fcos_head_solution2 import StructureTensorFCOSHeadSolution2
 
 from .dcfl_head import RDCFLHead
 
@@ -41,5 +42,5 @@ __all__ = [
     'CSLRFCOSHead', 'OrientedRepPointsHead', 'RotatedDETRHead', 
     'RotatedDeformableDETRHead', 'ARSDeformableDETRHead', 'DNARSDeformableDETRHead',
     'H2RBoxHead', 'H2RBoxVHeadStuctureTensor', 'PSCRFCOSHead', 'KLDRepPointsHead', 'H2RBoxV2PHead',
-    'RDCFLHead', 'H2RBoxV2PHeadStuctureTensor', 'StructureTensorFCOSHead'
+    'RDCFLHead', 'H2RBoxV2PHeadStuctureTensor', 'StructureTensorFCOSHead', 'StructureTensorFCOSHeadSolution2',
 ]

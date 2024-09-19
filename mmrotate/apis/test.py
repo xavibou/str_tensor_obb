@@ -24,9 +24,17 @@ def single_gpu_test(model,
     dataset = data_loader.dataset
     PALETTE = dataset.PALETTE
     prog_bar = mmcv.ProgressBar(len(dataset))
+
+    # Record inference time per image
+    time_list = []
+
     for i, data in enumerate(data_loader):
         with torch.no_grad():
+            # Record the time of forward
+            start_time = time.time()
             result = model(return_loss=False, rescale=True, **data)
+            end_time = time.time()
+            time_list.append(end_time - start_time)
 
         batch_size = len(result)
 
@@ -69,6 +77,11 @@ def single_gpu_test(model,
 
         for _ in range(batch_size):
             prog_bar.update()
+    
+    # Calculate the average inference time per image
+    avg_time = sum(time_list) / len(time_list)
+    print(f"Average inference time per image: {avg_time} s")
+
     return results
 
 

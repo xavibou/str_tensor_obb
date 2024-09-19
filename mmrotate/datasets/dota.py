@@ -54,7 +54,7 @@ class DOTADataset(CustomDataset):
     def __len__(self):
         """Total number of samples of data."""
         return len(self.data_infos)
-        #return 2000
+        #return 1000
 
     def load_annotations(self, ann_folder):
         """

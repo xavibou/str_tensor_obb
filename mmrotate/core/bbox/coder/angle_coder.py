@@ -4,7 +4,7 @@ import math
 import torch
 from mmdet.core.bbox.coder.base_bbox_coder import BaseBBoxCoder
 from torch import Tensor
-
+from mmrotate.core.bbox.transforms import norm_angle
 from ..builder import ROTATED_BBOX_CODERS
 
 
@@ -251,3 +251,105 @@ class PseudoAngleCoder(BaseBBoxCoder):
             return angle_preds
         else:
             return angle_preds.squeeze(-1)
+
+
+@ROTATED_BBOX_CODERS.register_module()
+class STCoder(BaseBBoxCoder):
+    """
+    Structure Tensor Coder (ST)
+    Args:
+        angle_version (str): Angle definition.
+            Only 'le90' is supported at present.
+    """
+
+    def __init__(self,
+                 angle_version: str
+                 ):
+        super().__init__()
+        self.angle_version = angle_version
+        assert angle_version in ['le90']
+    
+    def encode(self, angle, width, height):
+        # Ensure input tensors are of shape [N, 1]
+        '''
+        if len(angle.shape) > 1:
+            angle = angle.squeeze(1)
+        if len(width.shape) > 1:
+            width = width.squeeze(1)
+        if len(height.shape) > 1:
+            height = height.squeeze(1)
+        '''
+
+        # Ensure width is always greater than height
+        #equal_indices = width - height < 1e-4
+        #width[equal_indices] += 1e-4
+
+        angle = angle.squeeze(1)
+        width = width.squeeze(1)
+        height = height.squeeze(1)
+
+        equal_indices = width - height < 1e-2
+        #width[equal_indices] += 1e-2
+        mod_angle = norm_angle(angle, 'le45')
+        angle[equal_indices] = mod_angle[equal_indices]
+
+        # Compute cosine and sine of the angles
+        cos_theta = torch.cos(angle)
+        sin_theta = torch.sin(angle)
+        
+        # Create the rotation matrix for each angle
+        R = torch.stack([
+            torch.stack([cos_theta, -sin_theta], dim=1),
+            torch.stack([sin_theta, cos_theta], dim=1)
+        ], dim=1)
+
+        # Eigenvalues (width and height) need to be of shape [N, 2]
+        eigenvalues = torch.stack([width, height / 2], dim=1)
+
+        # Create diagonal matrix of eigenvalues for each batch
+        Lambda = torch.stack([
+            torch.diag(eigenvalues[i])
+            for i in range(eigenvalues.shape[0])
+        ])
+        
+        # Compute structure tensor T for each angle
+        T = torch.bmm(R, torch.bmm(Lambda, R.transpose(1, 2)))
+        
+        # Extract the components of the structure tensor
+        a = T[:, 0, 0]
+        b = T[:, 1, 1]
+        c = T[:, 0, 1]  # Since T is symmetric, T[0, 1] == T[1, 0]
+        
+        return torch.stack([a, b, c], dim=1)
+    
+    def decode(self, str_tensor, angle_range='le90'):
+        # Extract individual components from str_tensor
+        a = str_tensor[:, 0]  # shape [N]
+        b = str_tensor[:, 1]  # shape [N]
+        c = str_tensor[:, 2]  # shape [N]
+
+        # Build structure tensor as a matrix
+        structure_tensors = torch.stack([
+            torch.stack([a, c], dim=-1),  # shape [N, 2]
+            torch.stack([c, b], dim=-1)   # shape [N, 2]
+        ], dim=-2)  # shape [N, 2, 2]
+
+        # Calculate the eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = torch.linalg.eigh(structure_tensors) 
+
+        # Extract the real parts of the eigenvalues and eigenvectors
+        eigenvalues = torch.abs(eigenvalues.real)  # shape [N, 2]
+        eigenvectors = eigenvectors.real  # shape [N, 2, 2]
+
+        w = 2 * eigenvalues[:, 0] #+ 1e-2  # shape [N]
+        h = 2 * eigenvalues[:, 1]  # shape [N]
+        a = torch.atan2(eigenvectors[:, 1, 1], eigenvectors[:, 0, 1])  # shape [N]
+        a = norm_angle(a, angle_range)
+        #equal_indices = w - h < 1e-2
+        #mod_angle = norm_angle(a, 'le45')
+        #a[equal_indices] = mod_angle[equal_indices]
+
+        # Construct the obb tensor [center_x, center_y, width, height, angle]
+        #obb = torch.stack([w, h, a], dim=-1)  # shape [N, 5]
+
+        return w, h, a

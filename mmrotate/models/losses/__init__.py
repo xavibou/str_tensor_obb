@@ -8,9 +8,10 @@ from .rotated_iou_loss import RotatedIoULoss
 from .smooth_focal_loss import SmoothFocalLoss
 from .spatial_border_loss import SpatialBorderLoss
 from .h2rbox_loss import H2RBoxLoss
+from .str_tensor_loss import StructureTensorLoss
 
 __all__ = [
     'GDLoss', 'GDLoss_v1', 'KFLoss', 'ConvexGIoULoss', 'BCConvexGIoULoss',
     'KLDRepPointsLoss', 'SmoothFocalLoss', 'RotatedIoULoss',
-    'SpatialBorderLoss', 'H2RBoxLoss'
+    'SpatialBorderLoss', 'H2RBoxLoss', 'StructureTensorLoss'
 ]
