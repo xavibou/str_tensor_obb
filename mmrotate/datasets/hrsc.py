@@ -9,7 +9,7 @@ from mmcv import print_log
 from mmdet.datasets import CustomDataset
 from PIL import Image
 
-from mmrotate.core import eval_rbbox_map, obb2poly_np, poly2obb_np
+from mmrotate.core import eval_rbbox_map, obb2poly_np, poly2obb_np, eval_angle_error
 from .builder import ROTATED_DATASETS
 
 
@@ -28,18 +28,6 @@ class HRSCDataset(CustomDataset):
 
     CLASSES = None
     HRSC_CLASS = ('ship', )
-    HRSC_CLASSES = ('ship', 'aircraft carrier', 'warcraft', 'merchant ship',
-                    'Nimitz', 'Enterprise', 'Arleigh Burke', 'WhidbeyIsland',
-                    'Perry', 'Sanantonio', 'Ticonderoga', 'Kitty Hawk',
-                    'Kuznetsov', 'Abukuma', 'Austen', 'Tarawa', 'Blue Ridge',
-                    'Container', 'OXo|--)', 'Car carrier([]==[])',
-                    'Hovercraft', 'yacht', 'CntShip(_|.--.--|_]=', 'Cruise',
-                    'submarine', 'lute', 'Medical', 'Car carrier(======|',
-                    'Ford-class', 'Midway-class', 'Invincible-class')
-    HRSC_CLASSES_ID = ('01', '02', '03', '04', '05', '06', '07', '08', '09',
-                       '10', '11', '12', '13', '14', '15', '16', '17', '18',
-                       '19', '20', '22', '24', '25', '26', '27', '28', '29',
-                       '30', '31', '32', '33')
     PALETTE = [
         (0, 255, 0),
     ]
@@ -87,7 +75,6 @@ class HRSCDataset(CustomDataset):
         Returns:
             list[dict]: Annotation info from XML file.
         """
-
         data_infos = []
         img_ids = mmcv.list_from_file(ann_file)
         for img_id in img_ids:
@@ -95,7 +82,7 @@ class HRSCDataset(CustomDataset):
 
             filename = osp.join(self.img_subdir, f'{img_id}.bmp')
             data_info['filename'] = f'{img_id}.bmp'
-            xml_path = osp.join(self.img_prefix, self.ann_subdir,
+            xml_path = osp.join(self.ann_subdir,
                                 f'{img_id}.xml')
             tree = ET.parse(xml_path)
             root = tree.getroot()
@@ -257,6 +244,19 @@ class HRSCDataset(CustomDataset):
                     logger=logger,
                     nproc=nproc)
                 mean_aps.append(mean_ap)
+
+                angle_error = eval_angle_error(
+                    results,
+                    annotations,
+                    dataset=self.CLASSES,
+                    iou_thr=iou_thr,
+                    nproc=nproc,
+                    logger=logger)
+                
+                eval_results[f'angle_error_mae_AP{int(iou_thr * 100):02d}'] = angle_error['MAE']
+                eval_results[f'angle_error_rmse_AP{int(iou_thr * 100):02d}'] = angle_error['RMSE']
+
+
                 eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
             eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
             eval_results.move_to_end('mAP', last=False)

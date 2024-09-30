@@ -154,6 +154,7 @@ class DOTADataset(CustomDataset):
             if (not self.filter_empty_gt
                     or data_info['ann']['labels'].size > 0):
                 valid_inds.append(i)
+        breakpoint()
         return valid_inds
 
     def _set_group_flag(self):

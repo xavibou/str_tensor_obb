@@ -261,8 +261,11 @@ def angle_error(theta_pred, theta_gt):
     Compute the angle prediction error, adjusted for periodicity.
     """
     delta_theta = theta_pred - theta_gt
+    delta_theta_shifted = theta_pred - theta_gt + np.pi/2
     delta_theta = normalize_angle(delta_theta)
-    return np.abs(delta_theta)
+    delta_theta_shifted = normalize_angle(delta_theta_shifted)
+    delta_theta = np.minimum(np.abs(delta_theta), np.abs(delta_theta_shifted))
+    return delta_theta
 
 def eval_angle_error(det_results,
                       annotations,
@@ -304,11 +307,14 @@ def eval_angle_error(det_results,
     tp_counts = []
 
     label_names = dataset
-
-    skip_classes = {'baseball-diamond', 'storage-tank', 'roundabout'}
+    
+    if len(dataset) == 1:
+        skip_classes = {}
+    else:
+        skip_classes = {'baseball-diamond', 'storage-tank', 'roundabout'}
 
     for i in range(num_classes):
-        if label_names[i] in skip_classes:
+        if len(dataset) > 1 and label_names[i] in skip_classes:
             all_errors_per_class.append({'MAE': 0, 'RMSE': 0})
             tp_counts.append(0)
             continue
@@ -400,7 +406,8 @@ def print_angle_error_summary(angle_errors, tp_counts, dataset=None, logger=None
     header = ['class', 'MAE', 'RMSE', 'TP Count']
     table_data = [header]
     for i in range(num_classes):
-        if label_names[i] in skip_classes:
+
+        if len(dataset) > 1 and label_names[i] in skip_classes:
             continue
         row_data = [
             label_names[i], f"{angle_errors[i]['MAE']:.3f}", f"{angle_errors[i]['RMSE']:.3f}", tp_counts[i]

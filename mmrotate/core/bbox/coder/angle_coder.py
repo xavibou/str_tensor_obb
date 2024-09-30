@@ -263,11 +263,27 @@ class STCoder(BaseBBoxCoder):
     """
 
     def __init__(self,
-                 angle_version: str
+                 angle_version: str,
+                 anisotropy: int = 4
                  ):
         super().__init__()
         self.angle_version = angle_version
+        self.encode_size = 3
         assert angle_version in ['le90']
+        self.anisotropy = anisotropy
+        
+        if anisotropy == 1:
+            self.width = 0.5
+            self.height = 0.5
+        elif anisotropy == 2:
+            self.width = 1
+            self.height = 0.5
+        elif anisotropy == 4:
+            self.width = 2
+            self.height = 0.5
+        else: 
+            raise NotImplementedError
+        
     
     def encode(self, angle, width, height):
         # Ensure input tensors are of shape [N, 1]
@@ -279,17 +295,11 @@ class STCoder(BaseBBoxCoder):
         if len(height.shape) > 1:
             height = height.squeeze(1)
         '''
-
-        # Ensure width is always greater than height
-        #equal_indices = width - height < 1e-4
-        #width[equal_indices] += 1e-4
-
         angle = angle.squeeze(1)
         width = width.squeeze(1)
         height = height.squeeze(1)
 
         equal_indices = width - height < 1e-2
-        #width[equal_indices] += 1e-2
         mod_angle = norm_angle(angle, 'le45')
         angle[equal_indices] = mod_angle[equal_indices]
 
@@ -304,7 +314,7 @@ class STCoder(BaseBBoxCoder):
         ], dim=1)
 
         # Eigenvalues (width and height) need to be of shape [N, 2]
-        eigenvalues = torch.stack([width, height / 2], dim=1)
+        eigenvalues = torch.stack([width * self.width, height * self.height], dim=1)
 
         # Create diagonal matrix of eigenvalues for each batch
         Lambda = torch.stack([
@@ -341,13 +351,10 @@ class STCoder(BaseBBoxCoder):
         eigenvalues = torch.abs(eigenvalues.real)  # shape [N, 2]
         eigenvectors = eigenvectors.real  # shape [N, 2, 2]
 
-        w = 2 * eigenvalues[:, 0] #+ 1e-2  # shape [N]
-        h = 2 * eigenvalues[:, 1]  # shape [N]
+        w =  eigenvalues[:, 0] #+ 1e-2  # shape [N]
+        h =  eigenvalues[:, 1]  # shape [N]
         a = torch.atan2(eigenvectors[:, 1, 1], eigenvectors[:, 0, 1])  # shape [N]
         a = norm_angle(a, angle_range)
-        #equal_indices = w - h < 1e-2
-        #mod_angle = norm_angle(a, 'le45')
-        #a[equal_indices] = mod_angle[equal_indices]
 
         # Construct the obb tensor [center_x, center_y, width, height, angle]
         #obb = torch.stack([w, h, a], dim=-1)  # shape [N, 5]

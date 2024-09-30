@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/hrsc.py', '../_base_/schedules/schedule_6x.py',
+    '../_base_/datasets/icdar.py', '../_base_/schedules/schedule_6x.py',
     '../_base_/default_runtime.py'
 ]
 

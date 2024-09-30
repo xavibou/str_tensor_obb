@@ -686,22 +686,18 @@ class H2RBoxV2PHeadStuctureTensorBackToOriginal(RotatedAnchorFreeHead):
             #    pair_angle_preds[:, 0], keepdim=True)
             #angle_trs_preds = self.angle_coder.decode(
             #    pair_angle_preds[:, 1], keepdim=True)
-            angle_ori_preds = pair_angle_preds[:, 0]
-            angle_trs_preds = pair_angle_preds[:, 1]
+            #angle_ori_preds = pair_angle_preds[:, 0]
+            #angle_trs_preds = pair_angle_preds[:, 1]
+            B, N, _ = pair_angle_preds.shape
+            centers = torch.ones(B, 2, device=pair_angle_preds.device)
+            angle_ori_preds = self.str_tensor_to_obb(centers, pair_angle_preds[:, 0])[..., 4]
+            angle_trs_preds = self.str_tensor_to_obb(centers, pair_angle_preds[:, 1])[..., 4]
 
             if len(pair_angle_preds):
                 if ss_info[0] == 'rot':
-                    #d_ang = angle_trs_preds - angle_ori_preds - rot
-                    angle_ori_preds = self.rotate_str_tensor(angle_ori_preds, -torch.tensor(rot))
+                    d_ang = angle_trs_preds - angle_ori_preds - rot
                 else:
-                    #d_ang = angle_ori_preds + angle_trs_preds
-                    angle_ori_preds = self.flip_str_tensor_vertical(angle_ori_preds)
-                
-                B, N, _ = pair_angle_preds.shape
-                centers = torch.ones(B, 2, device=pair_angle_preds.device)
-                angle_ori_preds = self.str_tensor_to_obb(centers, angle_ori_preds)[..., 4]
-                angle_trs_preds = self.str_tensor_to_obb(centers, angle_trs_preds)[..., 4]
-                d_ang = angle_trs_preds - angle_ori_preds
+                    d_ang = angle_ori_preds + angle_trs_preds
                 d_ang = (d_ang + torch.pi / 2) % torch.pi - torch.pi / 2
                 d_ang[square_mask] = 0
                 loss_ss = self.loss_ss_symmetry(d_ang, torch.zeros_like(d_ang))

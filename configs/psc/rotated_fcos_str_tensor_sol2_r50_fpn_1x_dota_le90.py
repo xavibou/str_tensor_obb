@@ -27,7 +27,7 @@ model = dict(
         num_outs=5,
         relu_before_extra_convs=True),
     bbox_head=dict(
-        type='StructureTensorFCOSHead',
+        type='StructureTensorFCOSHeadSolution2',
         num_classes=15,
         in_channels=256,
         stacked_convs=4,
@@ -44,7 +44,6 @@ model = dict(
         h_bbox_coder=dict(type='DistancePointBBoxCoder'),
         angle_coder=dict(
             type='STCoder', 
-            anisotropy=2,   # Isotropy allowed
             angle_version=angle_version),
         loss_cls=dict(
             type='FocalLoss',
@@ -53,7 +52,7 @@ model = dict(
             alpha=0.25,
             loss_weight=1.0),
         loss_bbox=dict(type='GIoULoss', loss_weight=1.0),
-        loss_angle=dict(type='L1Loss', loss_weight=0.05),
+        loss_angle=dict(type='StructureTensorLoss', loss_weight=0.05),
         loss_centerness=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
     # training and testing settings
