@@ -7,10 +7,11 @@ from .sar import SARDataset  # noqa: F401, F403
 from .rsg import RSGDataset
 from .dior import DIORDataset
 from .icdar import IcdarDataset
+from .magentine import MagentineDataset
 from .h2rbox import HRSCWSOODDataset, DIORWSOODDataset, DOTAWSOODDataset, DOTAv15WSOODDataset, DOTAv2WSOODDataset, SARWSOODDataset, RSGWSOODDataset
 
 __all__ = ['SARDataset', 'DOTADataset', 'DOTAv15Dataset', 'DOTAv2Dataset', 
            'build_dataset', 'HRSCDataset', 'RSGDataset', 'DIORDataset',
            'HRSCWSOODDataset', 'DIORWSOODDataset', 'DOTAWSOODDataset', 
            'DOTAv15WSOODDataset', 'DOTAv2WSOODDataset', 
-           'SARWSOODDataset', 'RSGWSOODDataset', 'IcdarDataset']
+           'SARWSOODDataset', 'RSGWSOODDataset', 'IcdarDataset', 'MagentineDataset']

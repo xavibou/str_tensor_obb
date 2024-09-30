@@ -264,7 +264,7 @@ class STCoder(BaseBBoxCoder):
 
     def __init__(self,
                  angle_version: str,
-                 anisotropy: int = 4
+                 anisotropy: int = 2
                  ):
         super().__init__()
         self.angle_version = angle_version
