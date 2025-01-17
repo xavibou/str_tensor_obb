@@ -177,17 +177,17 @@ def imshow_det_rbboxes(img,
         areas = bboxes[:, 2] * bboxes[:, 3]
         scales = _get_adaptive_scales(areas)
         scores = bboxes[:, 5] if bboxes.shape[1] == 6 else None
-        draw_labels(
+        '''draw_labels(
             ax,
             labels[:num_bboxes],
             positions,
-            scores=scores,
+            scores=None,
             class_names=class_names,
             color=text_colors,
-            font_size=font_size,
+            font_size=font_size+10,
             scales=scales,
             horizontal_alignment=horizontal_alignment)
-
+        '''
     if segms is not None:
         mask_palette = get_palette(mask_color, max_label + 1)
         colors = [mask_palette[label] for label in labels]

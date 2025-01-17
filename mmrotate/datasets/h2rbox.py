@@ -1,6 +1,10 @@
 from mmrotate.datasets.dota import DOTADataset
 from mmrotate.datasets.dior import DIORDataset
 from mmrotate.datasets.hrsc import HRSCDataset
+from mmrotate.datasets.icdar import IcdarDataset
+from mmrotate.datasets.msra import MSRADataset
+from mmrotate.datasets.magentine import MagentineDataset
+
 from mmrotate.datasets.builder import ROTATED_DATASETS
 from mmrotate.core.bbox.transforms import obb2hbb
 import torch
@@ -10,6 +14,98 @@ import re
 from functools import partial
 from collections import defaultdict
 from mmcv.ops import nms_rotated
+
+@ROTATED_DATASETS.register_module()
+class IcdarWSOODDataset(IcdarDataset):
+
+    def __init__(self,
+                 ann_file,
+                 pipeline,
+                 version='oc',
+                 difficulty=100,
+                 rect_classes=None,
+                 weak_supervised=True,
+                 **kwargs):
+        self.rect_classes = rect_classes
+        self.weak_supervised = weak_supervised
+
+        super(IcdarWSOODDataset, self).__init__(ann_file, pipeline,
+                                               version, difficulty, **kwargs)
+                                               
+    def prepare_train_img(self, idx):
+        img_info = self.data_infos[idx]
+        ann_info = self.get_ann_info(idx).copy()
+        if self.weak_supervised:
+            ann_info['bboxes'] = obb2hbb(
+                torch.from_numpy(ann_info['bboxes']),
+                version=self.version).numpy()
+        results = dict(img_info=img_info, ann_info=ann_info)
+        if self.proposals is not None:
+            results['proposals'] = self.proposals[idx]
+        self.pre_pipeline(results)
+        return self.pipeline(results)
+
+@ROTATED_DATASETS.register_module()
+class MagentineWSOODDataset(MagentineDataset):
+
+    def __init__(self,
+                 ann_file,
+                 pipeline,
+                 version='oc',
+                 difficulty=100,
+                 rect_classes=None,
+                 weak_supervised=True,
+                 **kwargs):
+        self.rect_classes = rect_classes
+        self.weak_supervised = weak_supervised
+
+        super(MagentineWSOODDataset, self).__init__(ann_file, pipeline,
+                                               version, difficulty, **kwargs)
+                                               
+    def prepare_train_img(self, idx):
+        img_info = self.data_infos[idx]
+        ann_info = self.get_ann_info(idx).copy()
+        if self.weak_supervised:
+            ann_info['bboxes'] = obb2hbb(
+                torch.from_numpy(ann_info['bboxes']),
+                version=self.version).numpy()
+        results = dict(img_info=img_info, ann_info=ann_info)
+        if self.proposals is not None:
+            results['proposals'] = self.proposals[idx]
+        self.pre_pipeline(results)
+        return self.pipeline(results)
+
+
+@ROTATED_DATASETS.register_module()
+class MSRADatasetWSOODDataset(MSRADataset):
+
+    def __init__(self,
+                 ann_file,
+                 pipeline,
+                 version='oc',
+                 difficulty=100,
+                 rect_classes=None,
+                 weak_supervised=True,
+                 **kwargs):
+        self.rect_classes = rect_classes
+        self.weak_supervised = weak_supervised
+
+        super(MSRADatasetWSOODDataset, self).__init__(ann_file, pipeline,
+                                               version, difficulty, **kwargs)
+
+    def prepare_train_img(self, idx):
+        img_info = self.data_infos[idx]
+        ann_info = self.get_ann_info(idx).copy()
+        if self.weak_supervised:
+            ann_info['bboxes'] = obb2hbb(
+                torch.from_numpy(ann_info['bboxes']),
+                version=self.version).numpy()
+
+        results = dict(img_info=img_info, ann_info=ann_info)
+        if self.proposals is not None:
+            results['proposals'] = self.proposals[idx]
+        self.pre_pipeline(results)
+        return self.pipeline(results)
 
 
 @ROTATED_DATASETS.register_module()

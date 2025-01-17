@@ -80,9 +80,8 @@ train_pipeline = [
         type='PolyRandomRotate',
         rotate_ratio=0.5,
         angles_range=180,
-        auto_bound=False,
-        rect_classes=[9, 11],
-        version=angle_version),
+        auto_bound=False,  # Set to True if you want to automatically adjust the bounding boxes
+        version=angle_version),  # Removed rect_classes to apply to all images
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),

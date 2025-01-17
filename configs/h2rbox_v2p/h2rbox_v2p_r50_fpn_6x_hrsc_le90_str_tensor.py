@@ -28,7 +28,7 @@ model = dict(
         relu_before_extra_convs=True),
     bbox_head=dict(
         type='H2RBoxV2PHeadStuctureTensor',
-        num_classes=15,
+        num_classes=1,
         in_channels=256,
         stacked_convs=4,
         feat_channels=256,
@@ -37,8 +37,8 @@ model = dict(
         center_sample_radius=1.5,
         norm_on_bbox=True,
         centerness_on_reg=True,
-        square_cls=[1, 9, 11],
-        resize_cls=[1],
+        #square_cls=[1, 9, 11],
+        #resize_cls=[1],
         scale_angle=False,
         bbox_coder=dict(
             type='DistanceAnglePointCoder', angle_version=angle_version),
@@ -68,7 +68,8 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(1024, 1024)),
+        #img_scale=(1024, 1024),
+        img_scale=(800, 512),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
@@ -84,7 +85,8 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(1024, 1024),
+        #img_scale=(1024, 1024),
+        img_scale=(800, 512),
         flip=False,
         transforms=[
             dict(type='RResize'),

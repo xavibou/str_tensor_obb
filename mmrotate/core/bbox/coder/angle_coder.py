@@ -351,8 +351,8 @@ class STCoder(BaseBBoxCoder):
         eigenvalues = torch.abs(eigenvalues.real)  # shape [N, 2]
         eigenvectors = eigenvectors.real  # shape [N, 2, 2]
 
-        w =  eigenvalues[:, 0] #+ 1e-2  # shape [N]
-        h =  eigenvalues[:, 1]  # shape [N]
+        w =  eigenvalues[:, 0] 
+        h =  eigenvalues[:, 1] 
         a = torch.atan2(eigenvectors[:, 1, 1], eigenvectors[:, 0, 1])  # shape [N]
         a = norm_angle(a, angle_range)
 

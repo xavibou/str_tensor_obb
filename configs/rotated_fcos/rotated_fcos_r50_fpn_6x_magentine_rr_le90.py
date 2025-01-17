@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/magentine.py', '../_base_/schedules/schedule_6x.py',
+    '../_base_/datasets/magentine.py', '../_base_/schedules/schedule_3x.py',
     '../_base_/default_runtime.py'
 ]
 angle_version = 'le90'
@@ -75,7 +75,6 @@ train_pipeline = [
         rotate_ratio=0.5,
         angles_range=180,
         auto_bound=False,
-        rect_classes=[9, 11],
         version=angle_version),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),

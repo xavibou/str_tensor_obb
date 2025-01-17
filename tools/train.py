@@ -21,6 +21,7 @@ from mmrotate.models import build_detector
 from mmrotate.utils import (collect_env, get_device, get_root_logger,
                             setup_multi_processes)
 
+warnings.filterwarnings("ignore", category=UserWarning)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')

@@ -77,7 +77,6 @@ train_pipeline = [
         rotate_ratio=0.5,
         angles_range=180,
         auto_bound=False,
-        rect_classes=[9, 11],
         version=angle_version),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),

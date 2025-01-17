@@ -8,10 +8,12 @@ from .rsg import RSGDataset
 from .dior import DIORDataset
 from .icdar import IcdarDataset
 from .magentine import MagentineDataset
-from .h2rbox import HRSCWSOODDataset, DIORWSOODDataset, DOTAWSOODDataset, DOTAv15WSOODDataset, DOTAv2WSOODDataset, SARWSOODDataset, RSGWSOODDataset
+from .msra import MSRADataset
+from .h2rbox import MSRADatasetWSOODDataset, HRSCWSOODDataset, DIORWSOODDataset, DOTAWSOODDataset, DOTAv15WSOODDataset, DOTAv2WSOODDataset, SARWSOODDataset, RSGWSOODDataset, MagentineWSOODDataset, IcdarWSOODDataset
 
 __all__ = ['SARDataset', 'DOTADataset', 'DOTAv15Dataset', 'DOTAv2Dataset', 
            'build_dataset', 'HRSCDataset', 'RSGDataset', 'DIORDataset',
            'HRSCWSOODDataset', 'DIORWSOODDataset', 'DOTAWSOODDataset', 
-           'DOTAv15WSOODDataset', 'DOTAv2WSOODDataset', 
-           'SARWSOODDataset', 'RSGWSOODDataset', 'IcdarDataset', 'MagentineDataset']
+           'DOTAv15WSOODDataset', 'DOTAv2WSOODDataset', 'MSRADataset', 
+           'SARWSOODDataset', 'RSGWSOODDataset', 'IcdarDataset', 'MagentineDataset', 
+           'MSRADatasetWSOODDataset', 'MagentineWSOODDataset', 'IcdarWSOODDataset']

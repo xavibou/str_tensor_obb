@@ -60,6 +60,7 @@ class RotatedBaseDetector(BaseDetector):
         """
         img = mmcv.imread(img)
         img = img.copy()
+
         if isinstance(result, tuple):
             bbox_result, segm_result = result
             if isinstance(segm_result, tuple):

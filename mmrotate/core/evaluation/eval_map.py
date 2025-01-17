@@ -260,11 +260,16 @@ def angle_error(theta_pred, theta_gt):
     """
     Compute the angle prediction error, adjusted for periodicity.
     """
-    delta_theta = theta_pred - theta_gt
-    delta_theta_shifted = theta_pred - theta_gt + np.pi/2
-    delta_theta = normalize_angle(delta_theta)
-    delta_theta_shifted = normalize_angle(delta_theta_shifted)
-    delta_theta = np.minimum(np.abs(delta_theta), np.abs(delta_theta_shifted))
+    #theta_pred = normalize_angle(theta_pred)
+    #theta_gt = normalize_angle(theta_gt)
+    delta_theta = np.minimum(
+                np.minimum(
+                    np.abs(theta_pred - theta_gt), 
+                    np.abs(theta_pred - theta_gt + np.pi)
+                    ),
+                np.abs(theta_pred - theta_gt - np.pi)
+            )
+
     return delta_theta
 
 def eval_angle_error(det_results,
@@ -308,7 +313,7 @@ def eval_angle_error(det_results,
 
     label_names = dataset
     
-    if len(dataset) == 1:
+    if len(dataset) == 1 or len(dataset) < 4:
         skip_classes = {}
     else:
         skip_classes = {'baseball-diamond', 'storage-tank', 'roundabout'}
