@@ -60,8 +60,7 @@ More instructions on installation, pretrained models, training and evaluation, p
 
 ## 🚀 Released Models
 
-### Provided Oriented Object Detection
-We provide several pre-trained models using the Structure Tensor (ST) representation:
+We provide several configs and pre-trained models using the Structure Tensor (ST) representation:
 
 |  Detector  | Dataset | Configs | Download |
 | :--------: |:---:|:-------:|:--------:|
