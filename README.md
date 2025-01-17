@@ -93,7 +93,5 @@ If you find this work helpful for your research, please consider giving this rep
 
 This project is released under the [Apache license](LICENSE). Parts of this project contain code and models from other sources, which are subject to their respective licenses.
 
-## Acknowledgements
-
 This repository is heavily borrowed from the MMRotate framework. For more details, see:  
 **STAR: A First-Ever Dataset and A Large-Scale Benchmark for Scene Graph Generation in Large-Size Satellite Imagery.**
