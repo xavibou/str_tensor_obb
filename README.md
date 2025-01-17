@@ -68,7 +68,7 @@ More instructions on installation, pretrained models, training and evaluation, p
 We provide several pre-trained models using the Structure Tensor (ST) representation:
 
 |  Detector  | Dataset | Configs | Download |
-| :--------: |:---:|:-------:|:--------:|:----:|
+| :--------: |:---:|:-------:|:--------:|
 | FCOS w/ ResnNet-50 (ST) | DOTA| [rotated_fcos_str_tensor_r50_fpn_1x_dota_le90](configs/psc/rotated_fcos_str_tensor_r50_fpn_1x_dota_le90.py) | [ckpt](https://drive.google.com/file/d/1wZP3R4JpmcEoazwrX5xgSI9Gamo13DZA/view?usp=sharing) 
 | H2RBox-v2 ResnNet-50 (ST) | DOTA| [h2rbox_v2p_r50_fpn_1x_dota_le90_str_tensor](configs/h2rbox_v2p/h2rbox_v2p_r50_fpn_1x_dota_le90_str_tensor.py) | [ckpt](https://drive.google.com/file/d/1CbufttHmlFZPFTzJNc4_vCo5oNl4pa75/view?usp=sharing) 
 | FCOS w/ ResnNet-50 (ST) | HRSC2016| [rotated_fcos_str_tensor_r50_fpn_6x_hrsc_le90](configs/psc/rotated_fcos_str_tensor_r50_fpn_6x_hrsc_le90.py) | [ckpt](https://drive.google.com/file/d/1THPNap0P9huiSan3d26QdTHUOyCZ6hVu/view?usp=sharing) 
