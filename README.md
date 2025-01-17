@@ -11,31 +11,12 @@ Centre Borelli, ENS Paris-Saclay
 
 This repository is the official implementation of the paper [Structure Tensor Representation for Robust Oriented Object Detection](https://arxiv.org/abs/2411.10497).
 
+---
 
 
+Oriented object detection predicts orientation in addition to object location and bounding box. Precisely predicting orientation remains challenging due to angular periodicity, which introduces boundary discontinuity issues and symmetry ambiguities. Inspired by classical works on edge and corner detection, this paper proposes to represent orientation in oriented bounding boxes as a structure tensor. This representation combines the strengths of Gaussian-based methods and angle-coder solutions, providing a simple yet efficient approach that is robust to angular periodicity issues without additional hyperparameters. Extensive evaluations across five datasets demonstrate that the proposed structure tensor representation outperforms previous methods in both fully-supervised and weakly supervised tasks, achieving high precision in angular prediction with minimal computational overhead. Thus, this work establishes structure tensors as a robust and modular alternative for encoding orientation in oriented object detection. We make our code publicly available, allowing for seamless integration into existing object detectors.
 
-
-
-
-
-
-# Scene Graph Generation in Large-Size VHR Satellite Imagery: A Large-Scale Dataset and A Context-Aware Approach
-
-The official implementation of the oriented object detection part of the paper "[Scene Graph Generation in Large-Size VHR Satellite Imagery: A Large-Scale Dataset and A Context-Aware Approach](https://arxiv.org/abs/2406.09410)".
-
-## ⭐️ Highlights
-
-**TL;DR:** We propose RSG, the first large-scale dataset for scene graph generation in large-size VHR SAI. Containing more than `210,000` objects and over `400,000` triplets across `1,273` complex scenarios globally.
-
-https://private-user-images.githubusercontent.com/29257168/339049597-2d027f2c-8911-45ba-b4dd-7f95111465a9.mp4
-
-## 📌 Abstract
-
-Scene graph generation (SGG) in satellite imagery (SAI) benefits promoting intelligent understanding of geospatial scenarios from perception to cognition. In SAI, objects exhibit great variations in scales and aspect ratios, and there exist rich relationships between objects (even between spatially disjoint objects), which makes it necessary to holistically conduct SGG in large-size very-high-resolution (VHR) SAI. However, the lack of SGG datasets with large-size VHR SAI has constrained the advancement of SGG in SAI. Due to the complexity of large-size VHR SAI, mining triplets <subject, relationship, object$> in large-size VHR SAI heavily relies on long-range contextual reasoning. Consequently, SGG models designed for small-size natural imagery are not directly applicable to large-size VHR SAI. To address the scarcity of datasets, this paper constructs a large-scale dataset for SGG in large-size VHR SAI with image sizes ranging from 512 × 768 to 27,860 × 31,096 pixels, named RSG, encompassing over 210,000 objects and more than 400,000 triplets. To realize SGG in large-size VHR SAI, we propose a context-aware cascade cognition (CAC) framework to understand SAI at three levels: object detection (OBD), pair pruning and relationship prediction. As a fundamental prerequisite for SGG in large-size SAI, a holistic multi-class object detection network (HOD-Net) that can flexibly integrate multi-scale contexts is proposed. With the consideration that there exist a huge amount of object pairs in large-size SAI but only a minority of object pairs contain meaningful relationships, we design a pair proposal generation (PPG) network via adversarial reconstruction to select high-value pairs. Furthermore, a relationship prediction network with context-aware messaging (RPCM) is proposed to predict the relationship types of these pairs. To promote the development of SGG in large-size VHR SAI, this paper releases a SAI-oriented SGG toolkit with about 30 OBD methods and 10 SGG methods, and develops a benchmark based on RSG where our HOD-Net and RPCM significantly outperform the state-of-the-art methods in both OBD and SGG tasks. **The RSG dataset and SAI-oriented toolkit will be made publicly available at https://linlin-dev.github.io/project/RSG.html**.
-
-<p align="center">
-<img src="demo/rsg.jpg" alt="scatter" width="98%"/> 
-</p>
+![Alt text](./demo/general_diagram.png)
 
 ## 🛠️ Usage
 
