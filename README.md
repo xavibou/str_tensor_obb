@@ -1,3 +1,24 @@
+# Structure Tensor Representation for Robust Oriented Object Detection
+
+[Xavier Bou](https://xavibou.github.io/), [Gabriele Facciolo](http://gfacciol.github.io/), [Rafael Grompone](https://scholar.google.fr/citations?user=GLovf4UAAAAJ&hl=en), [Jean-Michel Morel](https://sites.google.com/site/jeanmichelmorelcmlaenscachan/), [Thibaud Ehret](https://tehret.github.io)
+
+Centre Borelli, ENS Paris-Saclay
+---
+
+[![arXiv](https://img.shields.io/badge/paper-arxiv-brightgreen)](https://arxiv.org/abs/2411.10497)
+[![Google Drive](https://img.shields.io/badge/files-Google_Drive-blueviolet)](https://drive.google.com/drive/folders/1AnMQrW5UsMA6Hx-PM78iOnCPAzmgzPy3?usp=sharing)
+[![Project](https://img.shields.io/badge/project%20web-github.io-red)]()
+
+This repository is the official implementation of the paper [Structure Tensor Representation for Robust Oriented Object Detection](https://arxiv.org/abs/2411.10497).
+
+
+
+
+
+
+
+
+
 # Scene Graph Generation in Large-Size VHR Satellite Imagery: A Large-Scale Dataset and A Context-Aware Approach
 
 The official implementation of the oriented object detection part of the paper "[Scene Graph Generation in Large-Size VHR Satellite Imagery: A Large-Scale Dataset and A Context-Aware Approach](https://arxiv.org/abs/2406.09410)".
@@ -112,7 +133,7 @@ If you find this work helpful for your research, please consider giving this rep
 
 This project is released under the [Apache license](LICENSE). Parts of this project contain code and models from other sources, which are subject to their respective licenses.
 
-### Acknowledgements
+## Acknowledgements
 
 This repository is heavily borrowed from the MMRotate framework. For more details, see:  
 **STAR: A First-Ever Dataset and A Large-Scale Benchmark for Scene Graph Generation in Large-Size Satellite Imagery.**
