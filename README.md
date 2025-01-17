@@ -27,14 +27,14 @@ More instructions on installation, pretrained models, training and evaluation, p
 
   ```bash
   git clone https://github.com/yangxue0827/RSG-MMRotate
-  cd RSG-MMRotate/
+  cd str_tensor_obb/
   ```
 
 - Create a conda virtual environment and activate it:
   
   ```bash
-  conda create -n rsg-mmrotate python=3.8 -y
-  conda activate rsg-mmrotate
+  conda create -n str_tensor_obb python=3.8 -y
+  conda activate str_tensor_obb
   ```
 
 - Install Pytorch:
@@ -56,11 +56,6 @@ More instructions on installation, pretrained models, training and evaluation, p
 
   pip install timm
   pip install ipdb
-
-  # Optional, only for G-Rep
-  git clone git@github.com:KinglittleQ/torch-batch-svd.git
-  cd torch-batch-svd/
-  python setup.py install
   ```
 
 ## 🚀 Released Models
