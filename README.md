@@ -69,10 +69,17 @@ We provide several pre-trained models using the Structure Tensor (ST) representa
 
 |  Detector  | Dataset | Configs | Download | Note |
 | :--------: |:---:|:-------:|:--------:|:----:|
-| FCOS w/ ResnNet-50 (ST) | DOTA| [deformable_detr_r50_1x_rsg](configs/psc/rotated_fcos_psc_r50_fpn_1x_dota_le90.py) | [ckpt]() |
-| H2RBox-v2 ResnNet-50 (ST) | DOTA| [deformable_detr_r50_1x_rsg](configs/h2rbox_v2p/h2rbox_v2p_r50_fpn_1x_dota_le90_str_tensor.py) | [ckpt]() |
-| FCOS w/ ResnNet-50 (ST) | HRSC2016| [deformable_detr_r50_1x_rsg](configs/psc/rotated_fcos_str_tensor_r50_fpn_6x_hrsc_le90.py) | [ckpt]() |
-| H2RBox-v2 ResnNet-50 (ST) | HRSC2016| [deformable_detr_r50_1x_rsg](configs/h2rbox_v2p/h2rbox_v2p_r50_fpn_6x_hrsc_le90_str_tensor.py) | [ckpt]() |
+| FCOS w/ ResnNet-50 (ST) | DOTA| [rotated_fcos_str_tensor_r50_fpn_1x_dota_le90](configs/psc/rotated_fcos_str_tensor_r50_fpn_1x_dota_le90.py) | [ckpt]() |
+| H2RBox-v2 ResnNet-50 (ST) | DOTA| [h2rbox_v2p_r50_fpn_1x_dota_le90_str_tensor](configs/h2rbox_v2p/h2rbox_v2p_r50_fpn_1x_dota_le90_str_tensor.py) | [ckpt]() |
+
+| FCOS w/ ResnNet-50 (ST) | HRSC2016| [rotated_fcos_str_tensor_r50_fpn_6x_hrsc_le90](configs/psc/rotated_fcos_str_tensor_r50_fpn_6x_hrsc_le90.py) | [ckpt]() |
+| H2RBox-v2 ResnNet-50 (ST) | HRSC2016| [h2rbox_v2p_r50_fpn_6x_hrsc_le90_str_tensor](configs/h2rbox_v2p/h2rbox_v2p_r50_fpn_6x_hrsc_le90_str_tensor.py) | [ckpt]() |
+
+| FCOS w/ ResnNet-50 (ST) | ICDAR15| [rotated_fcos_str_tensor_r50_fpn_6x_icdar15_le90](configs/psc/rotated_fcos_str_tensor_r50_fpn_6x_icdar15_le90.py) | [ckpt]() |
+| H2RBox-v2 ResnNet-50 (ST) | ICDAR15| [h2rbox_v2p_r50_fpn_6x_icdar_le90_str_tensor](configs/psc/h2rbox_v2p_r50_fpn_6x_icdar_le90_str_tensor.py) | [ckpt]() |
+
+| H2RBox-v2 ResnNet-50 (ST) | MSRA-TD500| [rotated_fcos_str_tensor_r50_fpn_6x_msra_le90](configs/h2rbox_v2p/rotated_fcos_str_tensor_r50_fpn_6x_msra_le90.py) | [ckpt]() |
+| H2RBox-v2 ResnNet-50 (ST) | MSRA-TD500| [h2rbox_v2p_r50_fpn_6x_msra_le90_str_tensor](configs/h2rbox_v2p/h2rbox_v2p_r50_fpn_6x_msra_le90_str_tensor.py) | [ckpt]() |
 
 
 
