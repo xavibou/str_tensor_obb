@@ -65,10 +65,17 @@ More instructions on installation, pretrained models, training and evaluation, p
 ## 🚀 Released Models
 
 ### Provided Oriented Object Detection
+We provide several pre-trained models using the Structure Tensor (ST) representation:
 
 |  Detector  | Dataset | Configs | Download | Note |
 | :--------: |:---:|:-------:|:--------:|:----:|
-| Deformable DETR | 17.1 | [deformable_detr_r50_1x_rsg](configs/ars_detr/deformable_detr_r50_1x_rsg.py) | [log](https://huggingface.co/yangxue/RSG-MMRotate/raw/main/deformable_detr_r50_1x_rsg.log) \| [ckpt](https://huggingface.co/yangxue/RSG-MMRotate/resolve/main/deformable_detr_r50_1x_rsg-fe862bb3.pth?download=true) |
+| FCOS w/ ResnNet-50 (ST) | DOTA| [deformable_detr_r50_1x_rsg](configs/psc/rotated_fcos_psc_r50_fpn_1x_dota_le90.py) | [ckpt]() |
+| H2RBox-v2 ResnNet-50 (ST) | DOTA| [deformable_detr_r50_1x_rsg](configs/h2rbox_v2p/h2rbox_v2p_r50_fpn_1x_dota_le90_str_tensor.py) | [ckpt]() |
+| FCOS w/ ResnNet-50 (ST) | HRSC2016| [deformable_detr_r50_1x_rsg](configs/psc/rotated_fcos_str_tensor_r50_fpn_6x_hrsc_le90.py) | [ckpt]() |
+| H2RBox-v2 ResnNet-50 (ST) | HRSC2016| [deformable_detr_r50_1x_rsg](configs/h2rbox_v2p/h2rbox_v2p_r50_fpn_6x_hrsc_le90_str_tensor.py) | [ckpt]() |
+
+
+
 ## 🖊️ Citation
 
 If you find this work helpful for your research, please consider giving this repo a star ⭐ and citing our paper:
