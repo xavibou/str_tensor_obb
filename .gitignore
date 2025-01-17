@@ -6,6 +6,8 @@ build/*
 data/
 data/*
 data
+pretrain
+pretrain/*
 
 
 # Byte-compiled / optimized / DLL files
