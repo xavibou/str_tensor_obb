@@ -13,8 +13,9 @@ This repository is the official implementation of the paper [Structure Tensor Re
 
 ![Alt text](./demo/results.png)
 
-<video src="https://github.com/user-attachments/assets/76a36617-b2cc-4ae6-bfff-5f8c374e2d86" width="740" height="560"></video>
-
+<p align="center">
+    <img src=./demo/results_clip.gif alt="animated" />
+</p>
 ---
 
 
