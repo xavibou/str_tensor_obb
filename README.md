@@ -13,6 +13,7 @@ This repository is the official implementation of the paper [Structure Tensor Re
 
 ![Alt text](./demo/results.png)
 
+Robustness to rotation and shift:
 <p align="center">
     <img src="./demo/results_clip.gif" alt="animated" width="100%" />
 </p>
