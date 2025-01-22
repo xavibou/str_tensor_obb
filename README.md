@@ -11,11 +11,7 @@ Centre Borelli, ENS Paris-Saclay
 
 This repository is the official implementation of the paper [Structure Tensor Representation for Robust Oriented Object Detection](https://arxiv.org/abs/2411.10497).
 
-
-<video width="640" height="360" controls>
-  <source src="./results_clip.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+<video src="https://github.com/user-attachments/assets/76a36617-b2cc-4ae6-bfff-5f8c374e2d86" width="640" height="360"></video>
 
 
 
