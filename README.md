@@ -15,7 +15,7 @@ This repository is the official implementation of the paper [Structure Tensor Re
 
 Demo showing robustness to rotation and shift:
 <p align="center">
-    <img src=./demo/results_clip.gif alt="animated" width="740" height="560" />
+    <img src=./demo/results_clip.gif alt="animated" width="640" height="360" />
 </p>
 ---
 
