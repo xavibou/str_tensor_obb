@@ -4,9 +4,6 @@ import shutil
 import sys
 import warnings
 from setuptools import find_packages, setup
-import torch
-from torch.utils.cpp_extension import (BuildExtension, CppExtension,
-                                       CUDAExtension)
 
 
 def readme():
@@ -15,29 +12,6 @@ def readme():
         content = f.read()
     return content
 
-def make_cuda_ext(name, module, sources, sources_cuda=[]):
-
-    define_macros = []
-    extra_compile_args = {'cxx': []}
-
-    if torch.cuda.is_available() or os.getenv('FORCE_CUDA', '0') == '1':
-        define_macros += [('WITH_CUDA', None)]
-        extension = CUDAExtension
-        extra_compile_args['nvcc'] = [
-            '-D__CUDA_NO_HALF_OPERATORS__',
-            '-D__CUDA_NO_HALF_CONVERSIONS__',
-            '-D__CUDA_NO_HALF2_OPERATORS__',
-        ]
-        sources += sources_cuda
-    else:
-        print(f'Compiling {name} without CUDA')
-        extension = CppExtension
-
-    return extension(
-        name=f'{module}.{name}',
-        sources=[os.path.join(*module.split('.'), p) for p in sources],
-        define_macros=define_macros,
-        extra_compile_args=extra_compile_args)
 
 def get_version():
     """Get version of mmrotate."""
@@ -210,8 +184,6 @@ if __name__ == '__main__':
             'Programming Language :: Python :: 3.9',
         ],
         license='Apache License 2.0',
-        setup_requires=parse_requirements('requirements/build.txt'),
-        tests_require=parse_requirements('requirements/tests.txt'),
         install_requires=parse_requirements('requirements/runtime.txt'),
         extras_require={
             'all': parse_requirements('requirements.txt'),
@@ -220,18 +192,4 @@ if __name__ == '__main__':
             'optional': parse_requirements('requirements/optional.txt'),
             'mim': parse_requirements('requirements/mminstall.txt'),
         },
-        ext_modules=[
-            make_cuda_ext(
-                name='box_iou_rotated_cuda',
-                module='mmrotate.ops.box_iou_rotated',
-                sources=['src/box_iou_rotated_cpu.cpp', 'src/box_iou_rotated_cuda.cu']
-            ),
-            make_cuda_ext(
-                name='sort_vertices_cuda',
-                module='mmrotate.ops.box_iou_rotated_diff',
-                sources=['src/sort_vert.cpp', 'src/sort_vert_kernel.cu',]
-            ),
-
-        ],
-        cmdclass={'build_ext': BuildExtension},
         zip_safe=False)
