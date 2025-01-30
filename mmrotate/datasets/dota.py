@@ -51,11 +51,6 @@ class DOTADataset(CustomDataset):
 
         super(DOTADataset, self).__init__(ann_file, pipeline, **kwargs)
 
-    def __len__(self):
-        """Total number of samples of data."""
-        return len(self.data_infos)
-        #return 1000
-
     def load_annotations(self, ann_folder):
         """
             Args:
