@@ -30,19 +30,32 @@ Oriented object detection predicts orientation in addition to object location an
 More instructions on installation, pretrained models, training and evaluation, please refer to [MMRotate 0.3.4](README_en.md).
   
 - Clone this repo:
+  ```bash
+  git clone https://github.com/xavibou/str_tensor_obb.git
+  cd str_tensor_obb
+  ```
+
+- Create a conda virtual environment and activate it:
+  
+  ```bash
+  conda create -n str_tensor_obb python=3.8 -y
+  conda activate str_tensor_obb
+  ```
+
+- Install Pytorch:
 
   ```bash
-  conda create -n str_tensor_env python=3.8 -y
-  conda activate str_tensor_env
   pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
+  ```
+
+- Install requirements:
+
+  ```bash
   pip install -U openmim
   mim install mmcv-full==1.7.1
   mim install mmdet\<3.0.0
   mim install mmengine==0.10.4
   pip install yapf==0.31.0 timm
-
-  git clone https://github.com/xavibou/str_tensor_obb.git
-  cd str_tensor_obb
   pip install -v -e .
   ```
 
