@@ -31,7 +31,6 @@ class S2ANet(RotatedBaseDetector):
             fam_head.update(train_cfg=train_cfg['fam_cfg'])
         fam_head.update(test_cfg=test_cfg)
         self.fam_head = build_head(fam_head)
-
         self.align_conv_type = align_cfgs['type']
         self.align_conv_size = align_cfgs['kernel_size']
         self.feat_channels = align_cfgs['channels']
@@ -82,6 +81,8 @@ class S2ANet(RotatedBaseDetector):
         x = self.extract_feat(img)
 
         outs = self.fam_head(x)
+
+        breakpoint()
 
         loss_inputs = outs + (gt_bboxes, gt_labels, img_metas)
         loss_base = self.fam_head.loss(

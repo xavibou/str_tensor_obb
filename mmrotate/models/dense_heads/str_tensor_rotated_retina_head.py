@@ -342,45 +342,14 @@ class STRRetinaHead(RotatedRetinaHead):
                 # Get gt angle as target
                 angle_targets[pos_inds, :] = \
                     sampling_result.pos_gt_bboxes[:, 4:5]
-            # Angle encoder
-
             
             xywha_pos_targets = self.bbox_coder.decode(anchors[pos_inds, :], bbox_targets[pos_inds, :])
-            #breakpoint()
             # ST angle encoder takes angle, width, height as input
             a_t = self.angle_coder.encode(
                 pos_bbox_targets[:, 4:5],
                 xywha_pos_targets[:, 2:3], 
                 xywha_pos_targets[:, 3:4]
                 )
-            
-            '''
-            a_t = self.angle_coder.encode(
-                pos_bbox_targets[:, 4:5],
-                pos_bbox_targets[:, 2:3].abs(), 
-                pos_bbox_targets[:, 3:4].abs()
-                )
-            '''
-
-            #a_t = self.angle_coder.encode( xywha_pos_targets[:, 4:5], xywha_pos_targets[:, 2:3], xywha_pos_targets[:, 3:4])
-            wi, he, an = self.angle_coder.decode(a_t)
-
-            # bbox_pred = [x, y, w, h, a]
-            #bbox_pred = torch.cat([xywha_pos_targets[:, :2], wi[:, None], he[:, None], an[:, None]], dim=1)
-            import numpy as np
-            decoding_error = torch.minimum(
-                                torch.minimum(
-                                    torch.abs(an - pos_bbox_targets[:, 4:5].T),
-                                    torch.abs(an - pos_bbox_targets[:, 4:5].T + np.pi/2),
-                                ),
-                                torch.abs(an - pos_bbox_targets[:, 4:5].T - np.pi/2)
-            )
-
-            if decoding_error.max() > 0.1:
-                breakpoint()
-
-            #bboxes = self.bbox_coder.decode(
-            #        anchors, bbox_pred, max_shape=img_shape)
 
             angle_targets = torch.zeros((anchors.shape[0], self.coding_len), device=angle_targets.device)
             # normalize by the norm of the structure tensors

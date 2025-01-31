@@ -3,7 +3,7 @@ _base_ = [
     '../_base_/default_runtime.py'
 ]
 
-angle_version = 'le135'
+angle_version = 'le90'
 model = dict(
     type='S2ANet',
     backbone=dict(
@@ -25,7 +25,7 @@ model = dict(
         add_extra_convs='on_input',
         num_outs=5),
     fam_head=dict(
-        type='RotatedRetinaHead',
+        type='CSLRRetinaHead',
         num_classes=15,
         in_channels=256,
         stacked_convs=2,
@@ -44,13 +44,22 @@ model = dict(
             proj_xy=True,
             target_means=(.0, .0, .0, .0, .0),
             target_stds=(1.0, 1.0, 1.0, 1.0, 1.0)),
+        angle_coder=dict(
+            type='CSLCoder',
+            angle_version=angle_version,
+            omega=4,
+            window='gaussian',
+            radius=3),
         loss_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        loss_bbox=dict(type='SmoothL1Loss', beta=0.11, loss_weight=1.0)),
+        loss_bbox=dict(type='L1Loss', loss_weight=1.0),
+        loss_angle=dict(
+            type='SmoothFocalLoss', gamma=2.0, alpha=0.25, loss_weight=0.8)
+        ),
     align_cfgs=dict(
         type='AlignConv',
         kernel_size=3,
