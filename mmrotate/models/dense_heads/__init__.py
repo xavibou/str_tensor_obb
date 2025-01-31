@@ -27,6 +27,7 @@ from .h2rbox_v2p_head import H2RBoxV2PHead
 from .h2rbox_v2p_head_str_tensor import H2RBoxV2PHeadStuctureTensor
 from .h2rbox_head_str_tensor import H2RBoxVHeadStuctureTensor
 from .str_tensor_rotated_fcos_head import StructureTensorFCOSHead
+from .cobb_rotated_fcos_head import COBBFCOSHead
 
 from .dcfl_head import RDCFLHead
 
@@ -39,5 +40,5 @@ __all__ = [
     'CSLRFCOSHead', 'OrientedRepPointsHead', 'RotatedDETRHead', 
     'RotatedDeformableDETRHead', 'ARSDeformableDETRHead', 'DNARSDeformableDETRHead',
     'H2RBoxHead', 'H2RBoxVHeadStuctureTensor', 'PSCRFCOSHead', 'KLDRepPointsHead', 'H2RBoxV2PHead',
-    'RDCFLHead', 'H2RBoxV2PHeadStuctureTensor', 'StructureTensorFCOSHead',
+    'RDCFLHead', 'H2RBoxV2PHeadStuctureTensor', 'StructureTensorFCOSHead', 'COBBFCOSHead',
 ]
