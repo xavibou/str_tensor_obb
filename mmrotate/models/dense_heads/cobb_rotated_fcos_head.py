@@ -677,26 +677,28 @@ class COBBFCOSHead(RotatedAnchorFreeHead):
             ratio_pred = ratio_pred.permute(1, 2, 0).reshape(
                 -1, 1) # FIXME
 
+            # (left, top, right, bottom, angle) --> (min x, min y, max x, max y)
+            min_x = points[:,0] - bbox_pred[:,0]
+            min_y = points[:,1] - bbox_pred[:,3]
+            max_x = points[:,0] + bbox_pred[:,2]
+            max_y = points[:,1] + bbox_pred[:,1]
+            min_max_bbox = torch.stack([min_x, min_y, max_x, max_y], dim=-1)
+            decoded_angle = self.angle_coder.decode(min_max_bbox, ratio_pred, score_pred)[:,-1]
+            bbox_pred = torch.cat([bbox_pred, decoded_angle[..., None]], dim=-1)
+
             nms_pre = cfg.get('nms_pre', -1)
             if nms_pre > 0 and scores.shape[0] > nms_pre:
                 max_scores, _ = (scores * centerness[:, None]).max(dim=1)
                 _, topk_inds = max_scores.topk(nms_pre)
                 points = points[topk_inds, :]
                 bbox_pred = bbox_pred[topk_inds, :]
-                score_pred = score_pred[topk_inds, :]
-                ratio_pred = ratio_pred[topk_inds, :]
                 scores = scores[topk_inds, :]
                 centerness = centerness[topk_inds]
-
-            # decode bounding box
-            decoded_bbox_pred = self.h_bbox_coder.decode(points,
-                                                       bbox_pred)
-            bboxes = self.angle_coder.decode(decoded_bbox_pred, ratio_pred, score_pred)
-
+            bboxes = self.bbox_coder.decode(
+                points, bbox_pred, max_shape=img_shape)
             mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)
             mlvl_centerness.append(centerness)
-        print("boxes", bboxes.shape)
         mlvl_bboxes = torch.cat(mlvl_bboxes)
         if rescale:
             scale_factor = mlvl_bboxes.new_tensor(scale_factor)
@@ -714,11 +716,6 @@ class COBBFCOSHead(RotatedAnchorFreeHead):
             cfg.nms,
             cfg.max_per_img,
             score_factors=mlvl_centerness)
-        print(det_bboxes.shape)
-        print(torch.min(det_bboxes[:,0]), torch.max(det_bboxes[:,0]))
-        print(torch.min(det_bboxes[:,1]), torch.max(det_bboxes[:,1]))
-        print(torch.min(det_bboxes[:,2]), torch.max(det_bboxes[:,2]))
-        print(torch.min(det_bboxes[:,3]), torch.max(det_bboxes[:,3]))
         return det_bboxes, det_labels
 
     @force_fp32(

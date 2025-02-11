@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/hrsc.py', '../_base_/schedules/schedule_6x.py',
+    '../_base_/datasets/dotav1.py', '../_base_/schedules/schedule_1x.py',
     '../_base_/default_runtime.py'
 ]
 angle_version = 'le90'
@@ -27,7 +27,7 @@ model = dict(
         num_outs=5,
         relu_before_extra_convs=True),
     bbox_head=dict(
-        type='COBBFCOSHead',
+        type='RotatedFCOSHead',
         num_classes=15,
         in_channels=256,
         stacked_convs=4,
@@ -42,8 +42,8 @@ model = dict(
         bbox_coder=dict(
             type='DistanceAnglePointCoder', angle_version=angle_version),
         h_bbox_coder=dict(type='DistancePointBBoxCoder'),
-        angle_coder=dict( # TODO
-            type='COBBCoder',
+        angle_coder=dict(
+            type='COBBCoder', 
             angle_version=angle_version),
         loss_cls=dict(
             type='FocalLoss',
@@ -70,42 +70,19 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(800, 512)),
+    dict(type='RResize', img_scale=(1024, 1024)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
         direction=['horizontal', 'vertical', 'diagonal'],
-        version=angle_version),
-    dict(
-        type='PolyRandomRotate',
-        rotate_ratio=0.5,
-        angles_range=180,
-        auto_bound=False,
-        rect_classes=[9, 11],
         version=angle_version),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-
-test_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(
-        type='MultiScaleFlipAug',
-        img_scale=(800, 512),
-        flip=False,
-        transforms=[
-            dict(type='RResize'),
-            dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', size_divisor=32),
-            dict(type='DefaultFormatBundle'),
-            dict(type='Collect', keys=['img'])
-        ])
-]
-
 data = dict(
     samples_per_gpu=2,
     train=dict(pipeline=train_pipeline, version=angle_version),
-    val=dict(pipeline=test_pipeline, version=angle_version),
-    test=dict(pipeline=test_pipeline, version=angle_version))
+    val=dict(version=angle_version),
+    test=dict(version=angle_version))
