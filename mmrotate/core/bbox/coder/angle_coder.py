@@ -383,7 +383,7 @@ def rotated_box_to_poly(rrects):
     poly = ((R * rect).sum(1) + offset).reshape([n, 2, 4]).permute([0,2,1]).reshape([n, 8])
     return poly
 
-def norm_angle(angle, range=[float(-np.pi / 4), float(np.pi)]):
+def norm_angle_cobb(angle, range=[float(-np.pi / 4), float(np.pi)]):
     ret = (angle - range[0]) % range[1] + range[0]
     return ret
 
@@ -407,7 +407,8 @@ def poly_to_rotated_box(polys):
     angles[edge1 > edge2] = angles1[edge1 > edge2]
     angles[edge1 <= edge2] = angles2[edge1 <= edge2]
 
-    angles = norm_angle(angles)
+    angles = norm_angle_cobb(angles, range=[float(-np.pi / 2), float(np.pi / 2)])
+    #angles = norm_angle(angles, angle_range)
 
     x_ctr = (pt1[..., 0] + pt3[..., 0]) / 2.0
     y_ctr = (pt1[..., 1] + pt3[..., 1]) / 2.0
@@ -568,7 +569,7 @@ class COBBCoder(BaseBBoxCoder):
     # FIXME bboxes_pred should be ratio_pred
     def decode(self, hbboxes:torch.Tensor, bboxes_pred:torch.Tensor, rotated_scores:torch.Tensor, max_shape=None):
         assert hbboxes.shape[0] == hbboxes.shape[0] == rotated_scores.shape[0]
-
+        
         bboxes_pred = torch.squeeze(bboxes_pred, dim=-1)
         if self.ratio_type == 'sig':
             #bboxes_pred = torch.clamp(bboxes_pred) # WEIRD this is the identity according to the jittor doc
@@ -600,6 +601,8 @@ class COBBCoder(BaseBBoxCoder):
         min_y = hbboxes[:, 1]
         max_x = hbboxes[:, 2]
         max_y = hbboxes[:, 3]
+        
+        # (left, bottom, right, top)
         w = max_x - min_x
         h = max_y - min_y
         w_large = w > h
@@ -654,3 +657,37 @@ class COBBCoder(BaseBBoxCoder):
                 poly_to_rotated_box(poly2),
                 poly_to_rotated_box(poly3),
                 poly_to_rotated_box(poly4)]
+
+
+
+# Write a dummy test for the COBBCoder, to verify it can encode and decode the angle correctly
+
+def test_cobb_coder():
+    coder = COBBCoder(angle_version='le90')
+    center = torch.tensor([[0, 0], [0, 0]])
+    wh = torch.tensor([[1, 1], [1, 1]])
+    angle = torch.tensor([[np.pi/4], [10 * np.pi/180]])
+    ratio, ious = coder.encode(torch.cat([center, wh, angle], dim=-1))
+    print("ratio: ", ratio)
+    print("ious: ", ious)
+
+    # Decode the ratio and ious back to angle
+    x1 = center[:,0] - wh[:,0]/2
+    y1 = center[:,1] - wh[:,1]/2
+    x2 = center[:,0] + wh[:,0]/2
+    y2 = center[:,1] + wh[:,1]/2
+
+    # Compute the HBBOX from the rotated bbox by applying a rotation matrix
+
+
+    
+    xy_min_max_bbox = torch.stack([x1, y1, x2, y2], dim=-1)
+    decoded_bbox = coder.decode(xy_min_max_bbox, ratio, ious)
+    
+    print('Input bbox 1: ', torch.cat([center, wh, angle], dim=-1)[0])
+    print("Decoded bbox 1: ", decoded_bbox[0])
+    print()
+    print('Input bbox 2: ', torch.cat([center, wh, angle], dim=-1)[1])
+    print("Decoded bbox 2: ", decoded_bbox[1])
+
+test_cobb_coder()

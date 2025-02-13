@@ -330,6 +330,7 @@ class COBBFCOSHead(RotatedAnchorFreeHead):
 
         if len(pos_inds) > 0:
             pos_points = flatten_points[pos_inds]
+
             if self.separate_angle:
                 bbox_coder = self.h_bbox_coder
             else:
@@ -345,6 +346,7 @@ class COBBFCOSHead(RotatedAnchorFreeHead):
                                                        pos_bbox_preds)
             pos_decoded_target_preds = bbox_coder.decode(
                 pos_points, pos_bbox_targets)
+            
             loss_bbox = self.loss_bbox(
                 pos_decoded_bbox_preds,
                 pos_decoded_target_preds,
@@ -352,9 +354,17 @@ class COBBFCOSHead(RotatedAnchorFreeHead):
                 avg_factor=centerness_denorm)
 
             if self.separate_angle:
+                #breakpoint()
+                #decoded_bbox = self.bbox_coder.distance2obb(pos_points, torch.cat([pos_bbox_targets, pos_angle_targets], dim=-1))
+                #wi, he, = self.bbox_coder.get_rotated_wh(torch.cat([pos_bbox_targets, pos_angle_targets], dim=-1))
                 wh = pos_bbox_targets[:, :2] + pos_bbox_targets[:, 2:]  # Compute width and height
                 center = pos_points + (pos_bbox_targets[:, 2:] - pos_bbox_targets[:, :2])/2. # Compute BB center
                 pos_ratio_targets, pos_score_targets = self.angle_coder.encode(torch.cat([center, wh, pos_angle_targets], dim=-1))
+
+                #min_max_bbox = self.h_bbox_coder.decode(pos_points, pos_bbox_targets)
+                #decoded_angle = self.angle_coder.decode(min_max_bbox, pos_ratio_targets, pos_score_targets)[:,-1]
+                
+
 
                 loss_score = self.loss_score(
                     pos_score_preds, pos_score_targets, avg_factor=num_pos)
@@ -677,12 +687,26 @@ class COBBFCOSHead(RotatedAnchorFreeHead):
             ratio_pred = ratio_pred.permute(1, 2, 0).reshape(
                 -1, 1) # FIXME
 
+            # (top, bottom, left, right) --> (min x, min y, max x, max y)
+            #min_x = points[:,0] - bbox_pred[:,2]
+            #min_y = points[:,1] - bbox_pred[:,1]
+            #max_x = points[:,0] + bbox_pred[:,3]
+            #max_y = points[:,1] + bbox_pred[:,0]
+            
+            min_max_bbox = self.h_bbox_coder.decode(points, bbox_pred)
+            #min_max_bbox = torch.split(pos_decoded_target_preds, [1,1,1,1], dim=-1)
+            #min_x = x1
+            #min_y = y1
+            #max_x = x2
+            #max_y = y2
+
             # (left, top, right, bottom, angle) --> (min x, min y, max x, max y)
-            min_x = points[:,0] - bbox_pred[:,0]
-            min_y = points[:,1] - bbox_pred[:,3]
-            max_x = points[:,0] + bbox_pred[:,2]
-            max_y = points[:,1] + bbox_pred[:,1]
-            min_max_bbox = torch.stack([min_x, min_y, max_x, max_y], dim=-1)
+            #min_x = points[:,0] - bbox_pred[:,0] 
+            #min_y = points[:,1] - bbox_pred[:,1]
+            #max_x = points[:,0] + bbox_pred[:,2]
+            #max_y = points[:,1] + bbox_pred[:,3]
+            #min_max_bbox = torch.cat([min_x, min_y, max_x, max_y], dim=-1)
+            
             decoded_angle = self.angle_coder.decode(min_max_bbox, ratio_pred, score_pred)[:,-1]
             bbox_pred = torch.cat([bbox_pred, decoded_angle[..., None]], dim=-1)
 

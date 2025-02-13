@@ -89,6 +89,22 @@ class DistanceAnglePointCoder(BaseBBoxCoder):
             right = right.clamp(min=0, max=max_dis - eps)
             bottom = bottom.clamp(min=0, max=max_dis - eps)
         return torch.stack((left, top, right, bottom, angle.squeeze(-1)), -1)
+    
+    def get_rotated_wh(self, encoded_box):
+        # encoded_box shape: (..., 5) with [left, top, right, bottom, angle]
+        width = encoded_box[..., 0] + encoded_box[..., 2]   # original width
+        height = encoded_box[..., 1] + encoded_box[..., 3]  # original height
+        angle = encoded_box[..., 4]
+        
+        # Get absolute cosine and sine of the angle
+        cos_angle = torch.abs(torch.cos(angle))
+        sin_angle = torch.abs(torch.sin(angle))
+        
+        # The rotated width and height (axis-aligned)
+        rotated_width = width * cos_angle + height * sin_angle
+        rotated_height = width * sin_angle + height * cos_angle
+        
+        return rotated_width, rotated_height
 
     def distance2obb(self,
                      points,

@@ -283,6 +283,7 @@ class StructureTensorFCOSHead(RotatedAnchorFreeHead):
 
         if len(pos_inds) > 0:
             pos_points = flatten_points[pos_inds]
+            breakpoint()
             if self.separate_angle:
                 bbox_coder = self.h_bbox_coder
             else:
