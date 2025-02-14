@@ -1,72 +1,86 @@
-# Copyright (c) OpenMMLab. All rights reserved.
-
+# Copyright (c) SJTU. All rights reserved.
 import torch
 import torch.nn as nn
 from mmcv.runner import force_fp32
 from mmdet.core import images_to_levels, multi_apply, unmap
-
 from mmrotate.core import build_bbox_coder, multiclass_nms_rotated
+
 from ... import obb2hbb, rotated_anchor_inside_flags
 from ..builder import ROTATED_HEADS, build_loss
 from .rotated_retina_head import RotatedRetinaHead
 
-
 @ROTATED_HEADS.register_module()
-class STRRetinaHead(RotatedRetinaHead):
-    """Rotational Anchor-based refine head.
+class STKFIoURRetinaHead(RotatedRetinaHead):
+    """Rotated Anchor-based head for KFIoU. The difference from `RRetinaHead`
+    is that its loss_bbox requires bbox_pred, bbox_targets, pred_decode and
+    targets_decode as inputs.
 
     Args:
-        use_encoded_angle (bool): Decide whether to use encoded angle or
-            gt angle as target. Default: True.
-        shield_reg_angle (bool): Decide whether to shield the angle loss from
-            reg branch. Default: False.
-        angle_coder (dict): Config of angle coder.
-        loss_angle (dict): Config of angle classification loss.
+        num_classes (int): Number of categories excluding the background
+            category.
+        in_channels (int): Number of channels in the input feature map.
+        stacked_convs (int, optional): Number of stacked convolutions.
+        conv_cfg (dict, optional): Config dict for convolution layer.
+            Default: None.
+        norm_cfg (dict, optional): Config dict for normalization layer.
+            Default: None.
+        anchor_generator (dict): Config dict for anchor generator
         init_cfg (dict or list[dict], optional): Initialization config dict.
     """  # noqa: W605
 
     def __init__(self,
+                 num_classes,
+                 in_channels,
                  use_encoded_angle=True,
                  shield_reg_angle=False,
+                 stacked_convs=4,
+                 conv_cfg=None,
+                 norm_cfg=None,
                  angle_coder=dict(
                      type='STCoder',
                      angle_version='le90'),
-                 loss_angle=dict(
-                     type='CrossEntropyLoss',
-                     use_sigmoid=True,
-                     loss_weight=1.0),
+                 anchor_generator=dict(
+                     type='AnchorGenerator',
+                     octave_base_scale=4,
+                     scales_per_octave=3,
+                     ratios=[0.5, 1.0, 2.0],
+                     strides=[8, 16, 32, 64, 128]),
                  init_cfg=dict(
                      type='Normal',
                      layer='Conv2d',
                      std=0.01,
-                     override=[
-                         dict(
-                             type='Normal',
-                             name='retina_cls',
-                             std=0.01,
-                             bias_prob=0.01),
-                         dict(
-                             type='Normal',
-                             name='retina_angle_cls',
-                             std=0.01,
-                             bias_prob=0.01),
-                     ]),
+                     override=dict(
+                         type='Normal',
+                         name='retina_cls',
+                         std=0.01,
+                         bias_prob=0.01)),
                  **kwargs):
+        self.bboxes_as_anchors = None
+        self.shield_reg_angle = shield_reg_angle
+        self.use_encoded_angle = use_encoded_angle
         self.angle_coder = build_bbox_coder(angle_coder)
         self.coding_len = self.angle_coder.encode_size
-        super(STRRetinaHead, self).__init__(**kwargs, init_cfg=init_cfg)
-        self.shield_reg_angle = shield_reg_angle
-        self.loss_angle = build_loss(loss_angle)
-        self.use_encoded_angle = use_encoded_angle
-
+        
+        super(STKFIoURRetinaHead, self).__init__(
+            num_classes=num_classes,
+            in_channels=in_channels,
+            stacked_convs=stacked_convs,
+            conv_cfg=conv_cfg,
+            norm_cfg=norm_cfg,
+            anchor_generator=anchor_generator,
+            init_cfg=init_cfg,
+            **kwargs)
+        
+    
     def _init_layers(self):
         """Initialize layers of the head."""
-        super(STRRetinaHead, self)._init_layers()
+        super(STKFIoURRetinaHead, self)._init_layers()
         self.retina_angle_cls = nn.Conv2d(
             self.feat_channels,
             self.num_anchors * self.coding_len,
             3,
             padding=1)
+
 
     def forward_single(self, x):
         """Forward feature of a single scale level.
@@ -96,6 +110,7 @@ class STRRetinaHead(RotatedRetinaHead):
         
         return cls_score, bbox_pred, angle_cls
 
+        
     def loss_single(self, cls_score, bbox_pred, angle_cls, anchors, labels,
                     label_weights, bbox_targets, bbox_weights, angle_targets,
                     angle_weights, num_total_samples):
@@ -116,10 +131,6 @@ class STRRetinaHead(RotatedRetinaHead):
                 weight shape (N, num_total_anchors, 5).
             bbox_weights (torch.Tensor): BBox regression loss weights of each
                 anchor with shape (N, num_total_anchors, 5).
-            angle_targets (torch.Tensor): Angle classification targets of
-                each anchor weight shape (N, num_total_anchors, coding_len).
-            angle_weights (torch.Tensor): Angle classification loss weights
-                of each anchor with shape (N, num_total_anchors, 1).
             num_total_samples (int): If sampling, num total samples equal to
                 the number of total anchors; Otherwise, it is the number of
                 positive anchors.
@@ -129,44 +140,55 @@ class STRRetinaHead(RotatedRetinaHead):
 
                 - loss_cls (torch.Tensor): cls. loss for each scale level.
                 - loss_bbox (torch.Tensor): reg. loss for each scale level.
-                - loss_angle (torch.Tensor): angle cls. loss for each scale \
-                  level.
         """
-        # Classification loss
+        # classification loss
         labels = labels.reshape(-1)
         label_weights = label_weights.reshape(-1)
         cls_score = cls_score.permute(0, 2, 3,
                                       1).reshape(-1, self.cls_out_channels)
         loss_cls = self.loss_cls(
             cls_score, labels, label_weights, avg_factor=num_total_samples)
-        # Regression loss
+        # regression loss
         bbox_targets = bbox_targets.reshape(-1, 5)
         bbox_weights = bbox_weights.reshape(-1, 5)
-        # Shield angle in reg. branch
-        if self.shield_reg_angle:
-            bbox_weights[:, -1] = 0.
         bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
-        if self.reg_decoded_bbox:
-            anchors = anchors.reshape(-1, 5)
-            bbox_pred = self.bbox_coder.decode(anchors, bbox_pred)
 
-        loss_bbox = self.loss_bbox(
-            bbox_pred,
-            bbox_targets,
-            bbox_weights,
-            avg_factor=num_total_samples)
+        anchors = anchors.reshape(-1, 5)
+        #bbox_pred_decode = self.bbox_coder.decode(anchors, bbox_pred)
+        #bbox_targets_decode = self.bbox_coder.decode(anchors, bbox_targets)
 
         angle_cls = angle_cls.permute(0, 2, 3, 1).reshape(-1, self.coding_len)
         angle_targets = angle_targets.reshape(-1, self.coding_len)
         angle_weights = angle_weights.reshape(-1, 1)
 
-        loss_angle = self.loss_angle(
-            angle_cls,
-            angle_targets,
-            weight=angle_weights,
-            avg_factor=num_total_samples)
+        _, _, angle_pred = self.angle_coder.decode(angle_cls)
+        bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
+        bbox_pred_decode = self.bbox_coder.decode(anchors, bbox_pred)
 
-        return loss_cls, loss_bbox, loss_angle
+        _, _, angle_targ = self.angle_coder.decode(angle_targets)
+        bbox_targets = torch.cat((bbox_targets[:, :4], angle_targ[:, None]), dim=1)
+        bbox_targets_decode = self.bbox_coder.decode(anchors, bbox_targets)
+
+
+        # pred_tensor = torch.stack([*self.angle_coder.decode(angle_cls)], dim=-1)
+        # targets_tensor = torch.stack([*self.angle_coder.decode(angle_targets)], dim=-1)
+
+        # bbox_pred_decode = self.bbox_coder.decode(anchors, bbox_pred)
+        # bbox_targets_decode = self.bbox_coder.decode(anchors, bbox_targets)
+
+        # pred_tensor = torch.cat([bbox_pred_decode[:, :4], pred_tensor[:, -1:]], dim=-1)
+        # targets_tensor = torch.cat([bbox_targets_decode[:, :4], targets_tensor[:, -1:]], dim=-1)
+
+        loss_bbox = self.loss_bbox(
+            bbox_pred,
+            bbox_targets,
+            bbox_weights,
+            pred_str_tensor=bbox_pred_decode,
+            targets_str_tensor=bbox_targets_decode,
+            avg_factor=num_total_samples)
+        
+        
+        return loss_cls, loss_bbox
 
     @force_fp32(apply_to=('cls_scores', 'bbox_preds', 'angle_clses'))
     def loss(self,
@@ -230,7 +252,8 @@ class STRRetinaHead(RotatedRetinaHead):
         all_anchor_list = images_to_levels(concat_anchor_list,
                                            num_level_anchors)
 
-        losses_cls, losses_bbox, losses_angle = multi_apply(
+
+        losses_cls, losses_bbox = multi_apply(
             self.loss_single,
             cls_scores,
             bbox_preds,
@@ -245,8 +268,7 @@ class STRRetinaHead(RotatedRetinaHead):
             num_total_samples=num_total_samples)
         return dict(
             loss_cls=losses_cls,
-            loss_bbox=losses_bbox,
-            loss_angle=losses_angle)
+            loss_bbox=losses_bbox)
 
     def _get_targets_single(self,
                             flat_anchors,
@@ -440,7 +462,6 @@ class STRRetinaHead(RotatedRetinaHead):
             else:
                 scores = cls_score.softmax(-1)
             bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 5)
-
             angle_cls = angle_cls.permute(1, 2, 0).reshape(
                 -1, self.coding_len)
 
@@ -460,18 +481,16 @@ class STRRetinaHead(RotatedRetinaHead):
                 scores = scores[topk_inds, :]
                 angle_cls = angle_cls[topk_inds, :]
 
-            # Angle decoder
-            _, _, angle_pred = self.angle_coder.decode(angle_cls)
 
             if self.use_encoded_angle:
+                _, _, angle_pred = self.angle_coder.decode(angle_cls)
+                bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
                 bboxes = self.bbox_coder.decode(
                     anchors, bbox_pred, max_shape=img_shape)
-                bbox_pred[..., -1] = angle_pred
                 
             else:
                 bboxes = self.bbox_coder.decode(
                     anchors, bbox_pred, max_shape=img_shape)
-                bboxes[..., -1] = angle_pred
 
             mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)

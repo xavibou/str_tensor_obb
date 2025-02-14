@@ -273,8 +273,8 @@ class STCoder(BaseBBoxCoder):
         self.anisotropy = anisotropy
         
         if anisotropy == 1:
-            self.width = 0.5
-            self.height = 0.5
+            self.width = 0.25
+            self.height = 0.25
         elif anisotropy == 2:
             self.width = 1
             self.height = 0.5
@@ -314,7 +314,7 @@ class STCoder(BaseBBoxCoder):
         ], dim=1)
 
         # Eigenvalues (width and height) need to be of shape [N, 2]
-        eigenvalues = torch.stack([width * self.width, height * self.height], dim=1)
+        eigenvalues = torch.stack([width * self.width**2, height * self.height**2], dim=1)
 
         # Create diagonal matrix of eigenvalues for each batch
         Lambda = torch.stack([
