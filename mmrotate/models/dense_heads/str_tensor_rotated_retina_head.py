@@ -139,34 +139,34 @@ class STRRetinaHead(RotatedRetinaHead):
                                       1).reshape(-1, self.cls_out_channels)
         loss_cls = self.loss_cls(
             cls_score, labels, label_weights, avg_factor=num_total_samples)
-        # Regression loss
+        # regression loss
+        anchors = anchors.reshape(-1, 5)
         bbox_targets = bbox_targets.reshape(-1, 5)
         bbox_weights = bbox_weights.reshape(-1, 5)
-        # Shield angle in reg. branch
-        if self.shield_reg_angle:
-            bbox_weights[:, -1] = 0.
         bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
-        if self.reg_decoded_bbox:
-            anchors = anchors.reshape(-1, 5)
-            bbox_pred = self.bbox_coder.decode(anchors, bbox_pred)
-
-        loss_bbox = self.loss_bbox(
-            bbox_pred,
-            bbox_targets,
-            bbox_weights,
-            avg_factor=num_total_samples)
 
         angle_cls = angle_cls.permute(0, 2, 3, 1).reshape(-1, self.coding_len)
         angle_targets = angle_targets.reshape(-1, self.coding_len)
         angle_weights = angle_weights.reshape(-1, 1)
 
-        loss_angle = self.loss_angle(
-            angle_cls,
-            angle_targets,
-            weight=angle_weights,
+        _, _, angle_pred = self.angle_coder.decode(angle_cls)
+        bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
+        bbox_pred_decode = self.bbox_coder.decode(anchors, bbox_pred)
+
+        _, _, angle_targ = self.angle_coder.decode(angle_targets)
+        bbox_targets = torch.cat((bbox_targets[:, :4], angle_targ[:, None]), dim=1)
+        bbox_targets_decode = self.bbox_coder.decode(anchors, bbox_targets)
+
+        pred = torch.cat([bbox_pred[:, :2], bbox_pred_decode[:, 2:]], dim=-1)
+        target = torch.cat([bbox_targets[:, :2], bbox_targets_decode[:, 2:]], dim=-1)
+
+        loss_bbox = self.loss_bbox(
+            pred,
+            target,
+            bbox_weights,
             avg_factor=num_total_samples)
 
-        return loss_cls, loss_bbox, loss_angle
+        return loss_cls, loss_bbox
 
     @force_fp32(apply_to=('cls_scores', 'bbox_preds', 'angle_clses'))
     def loss(self,
@@ -230,7 +230,7 @@ class STRRetinaHead(RotatedRetinaHead):
         all_anchor_list = images_to_levels(concat_anchor_list,
                                            num_level_anchors)
 
-        losses_cls, losses_bbox, losses_angle = multi_apply(
+        losses_cls, losses_bbox = multi_apply(
             self.loss_single,
             cls_scores,
             bbox_preds,
@@ -245,8 +245,7 @@ class STRRetinaHead(RotatedRetinaHead):
             num_total_samples=num_total_samples)
         return dict(
             loss_cls=losses_cls,
-            loss_bbox=losses_bbox,
-            loss_angle=losses_angle)
+            loss_bbox=losses_bbox)
 
     def _get_targets_single(self,
                             flat_anchors,
@@ -327,6 +326,7 @@ class STRRetinaHead(RotatedRetinaHead):
 
         pos_inds = sampling_result.pos_inds
         neg_inds = sampling_result.neg_inds
+        
         if len(pos_inds) > 0:
             if not self.reg_decoded_bbox:
                 pos_bbox_targets = self.bbox_coder.encode(
@@ -440,7 +440,6 @@ class STRRetinaHead(RotatedRetinaHead):
             else:
                 scores = cls_score.softmax(-1)
             bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 5)
-
             angle_cls = angle_cls.permute(1, 2, 0).reshape(
                 -1, self.coding_len)
 
@@ -460,18 +459,16 @@ class STRRetinaHead(RotatedRetinaHead):
                 scores = scores[topk_inds, :]
                 angle_cls = angle_cls[topk_inds, :]
 
-            # Angle decoder
-            _, _, angle_pred = self.angle_coder.decode(angle_cls)
-
             if self.use_encoded_angle:
-                bboxes = self.bbox_coder.decode(
+                _, _, angle_pred = self.angle_coder.decode(angle_cls)
+                bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
+                bbox_pred_decode = self.bbox_coder.decode(
                     anchors, bbox_pred, max_shape=img_shape)
-                bbox_pred[..., -1] = angle_pred
+                bboxes = torch.cat([bbox_pred[:, :2], bbox_pred_decode[:, 2:]], dim=-1)
                 
             else:
                 bboxes = self.bbox_coder.decode(
                     anchors, bbox_pred, max_shape=img_shape)
-                bboxes[..., -1] = angle_pred
 
             mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)

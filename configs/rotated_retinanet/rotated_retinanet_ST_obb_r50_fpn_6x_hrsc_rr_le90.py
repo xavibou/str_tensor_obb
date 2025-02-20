@@ -5,7 +5,7 @@ _base_ = [
 
 angle_version = 'le90'
 model = dict(
-    type='STRRetinaHead',
+    type='RotatedRetinaNet',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -25,7 +25,7 @@ model = dict(
         add_extra_convs='on_input',
         num_outs=5),
     bbox_head=dict(
-        type='RotatedRetinaHead',
+        type='STRRetinaHead',
         num_classes=1,
         in_channels=256,
         stacked_convs=4,

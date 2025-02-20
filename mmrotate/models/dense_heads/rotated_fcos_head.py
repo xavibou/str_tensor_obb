@@ -316,6 +316,12 @@ class RotatedFCOSHead(RotatedAnchorFreeHead):
                 pos_decoded_target_preds,
                 weight=pos_centerness_targets,
                 avg_factor=centerness_denorm)
+
+            # Filter out NaN values in loss_bbox
+            nan_mask = ~torch.isnan(loss_bbox)
+            if not torch.all(nan_mask):
+                loss_bbox = loss_bbox[nan_mask].mean() if torch.any(nan_mask) else loss_bbox.new_tensor(0.0)
+
             if self.separate_angle:
                 if self.angle_coder:
                     pos_angle_targets = self.angle_coder.encode(pos_angle_targets)

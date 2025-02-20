@@ -287,11 +287,13 @@ class StructureTensorFCOSHead(RotatedAnchorFreeHead):
                 bbox_coder = self.h_bbox_coder
             else:
                 bbox_coder = self.bbox_coder
+                pos_angle_preds = pos_angle_preds / torch.norm(pos_angle_preds, dim=1, keepdim=True)
                 _, _, pos_decoded_angle_preds = self.angle_coder.decode(pos_angle_preds)
                 pos_bbox_preds = torch.cat(
                     [pos_bbox_preds, pos_decoded_angle_preds[..., None]], dim=-1)
                 pos_bbox_targets = torch.cat(
                     [pos_bbox_targets, pos_angle_targets], dim=-1)
+
             pos_decoded_bbox_preds = bbox_coder.decode(pos_points,
                                                        pos_bbox_preds)
             pos_decoded_target_preds = bbox_coder.decode(

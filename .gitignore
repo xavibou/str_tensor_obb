@@ -8,7 +8,8 @@ data/*
 data
 paper_experiments
 paper_experiments/*
-
+second_paper_experiments
+second_paper_experiments/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

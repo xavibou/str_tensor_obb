@@ -149,17 +149,20 @@ class STKFIoURRetinaHead(RotatedRetinaHead):
         loss_cls = self.loss_cls(
             cls_score, labels, label_weights, avg_factor=num_total_samples)
         # regression loss
+        anchors = anchors.reshape(-1, 5)
         bbox_targets = bbox_targets.reshape(-1, 5)
         bbox_weights = bbox_weights.reshape(-1, 5)
         bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
 
-        anchors = anchors.reshape(-1, 5)
         #bbox_pred_decode = self.bbox_coder.decode(anchors, bbox_pred)
         #bbox_targets_decode = self.bbox_coder.decode(anchors, bbox_targets)
 
         angle_cls = angle_cls.permute(0, 2, 3, 1).reshape(-1, self.coding_len)
         angle_targets = angle_targets.reshape(-1, self.coding_len)
         angle_weights = angle_weights.reshape(-1, 1)
+
+        # make sure angle_cls is of unit length
+        #angle_cls = angle_cls / torch.norm(angle_cls, dim=1, keepdim=True)
 
         _, _, angle_pred = self.angle_coder.decode(angle_cls)
         bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
