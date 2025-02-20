@@ -36,7 +36,6 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None,
-                 separate_angle=False,
                  version='oc',
                  init_cfg=None):
         assert bbox_roi_extractor is not None
@@ -51,7 +50,6 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         self.test_cfg = test_cfg
         self.pretrained = pretrained
         self.version = version
-        self.separate_angle = separate_angle
 
         if bbox_head is not None:
             self.init_bbox_head(bbox_roi_extractor, bbox_head)
@@ -130,14 +128,10 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         bbox_feats = bbox_roi_extractor(x[:bbox_roi_extractor.num_inputs],
                                         rois)
         # do not support caffe_c4 model anymore
-        if not self.separate_angle:
-            cls_score, bbox_pred = bbox_head(bbox_feats)
-            bbox_results = dict(
-                cls_score=cls_score, bbox_pred=bbox_pred, bbox_feats=bbox_feats)
-        else:
-            cls_score, bbox_pred, angle_pred = bbox_head(bbox_feats)
-            bbox_results = dict(
-                cls_score=cls_score, bbox_pred=bbox_pred, angle_pred=angle_pred, bbox_feats=bbox_feats)
+        cls_score, bbox_pred = bbox_head(bbox_feats)
+
+        bbox_results = dict(
+            cls_score=cls_score, bbox_pred=bbox_pred, bbox_feats=bbox_feats)
         return bbox_results
 
     def _bbox_forward_train(self, stage, x, sampling_results, gt_bboxes,
@@ -164,17 +158,9 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         bbox_results = self._bbox_forward(stage, x, rois)
         bbox_targets = self.bbox_head[stage].get_targets(
             sampling_results, gt_bboxes, gt_labels, rcnn_train_cfg)
-        
-        if not self.separate_angle:
-            loss_bbox = self.bbox_head[stage].loss(bbox_results['cls_score'],
-                                                bbox_results['bbox_pred'], rois,
-                                                *bbox_targets)
-        else:
-            loss_bbox = self.bbox_head[stage].loss(bbox_results['cls_score'],
-                                                bbox_results['bbox_pred'], 
-                                                bbox_results['angle_pred'], 
-                                                rois,
-                                                *bbox_targets)
+        loss_bbox = self.bbox_head[stage].loss(bbox_results['cls_score'],
+                                               bbox_results['bbox_pred'], rois,
+                                               *bbox_targets)
 
         bbox_results.update(
             loss_bbox=loss_bbox, rois=rois, bbox_targets=bbox_targets)
@@ -309,8 +295,6 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
             # split batch bbox prediction back to each image
             cls_score = bbox_results['cls_score']
             bbox_pred = bbox_results['bbox_pred']
-            if self.separate_angle:
-                angle_pred = bbox_results['angle_pred']
             num_proposals_per_img = tuple(
                 len(proposals) for proposals in proposal_list)
             rois = rois.split(num_proposals_per_img, 0)
@@ -320,12 +304,6 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
             else:
                 bbox_pred = self.bbox_head[i].bbox_pred_split(
                     bbox_pred, num_proposals_per_img)
-            if self.separate_angle:
-                if isinstance(angle_pred, torch.Tensor):
-                    angle_pred = angle_pred.split(num_proposals_per_img, 0)
-                else:
-                    angle_pred = self.bbox_head[i].bbox_pred_split(
-                        angle_pred, num_proposals_per_img)
             ms_scores.append(cls_score)
 
             if i < self.num_stages - 1:
@@ -352,26 +330,14 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         det_bboxes = []
         det_labels = []
         for i in range(num_imgs):
-            if not self.separate_angle:
-                det_bbox, det_label = self.bbox_head[-1].get_bboxes(
-                    rois[i],
-                    cls_score[i],
-                    bbox_pred[i],
-                    img_shapes[i],
-                    scale_factors[i],
-                    rescale=rescale,
-                    cfg=rcnn_test_cfg)
-            else:
-                det_bbox, det_label = self.bbox_head[-1].get_bboxes(
-                    rois[i],
-                    cls_score[i],
-                    bbox_pred[i],
-                    angle_pred[i],
-                    img_shapes[i],
-                    scale_factors[i],
-                    rescale=rescale,
-                    cfg=rcnn_test_cfg)
-
+            det_bbox, det_label = self.bbox_head[-1].get_bboxes(
+                rois[i],
+                cls_score[i],
+                bbox_pred[i],
+                img_shapes[i],
+                scale_factors[i],
+                rescale=rescale,
+                cfg=rcnn_test_cfg)
             det_bboxes.append(det_bbox)
             det_labels.append(det_label)
 
