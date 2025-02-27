@@ -125,18 +125,18 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
                 in_features=self.cls_last_dim,
                 out_features=cls_channels)
         if self.with_reg:
-            out_dim_reg = (5 if self.reg_class_agnostic else 5 *
-                           self.num_classes)
+            out_dim_reg = (5 if self.reg_class_agnostic else 5 * self.num_classes)
             self.fc_reg = build_linear_layer(
                 self.reg_predictor_cfg,
                 in_features=self.reg_last_dim,
                 out_features=out_dim_reg)
                 
             # Add angle prediction layer
+            out_dim_angle = (3 if self.reg_class_agnostic else 3 * self.num_classes)
             self.fc_angle = build_linear_layer(
                 self.reg_predictor_cfg,
                 in_features=self.angle_last_dim,
-                out_features=3)  # 3 channels for angle prediction
+                out_features=out_dim_angle)  # 3 channels for angle prediction
 
             if init_cfg is None:
                 self.init_cfg += [
@@ -241,7 +241,7 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
         cls_score = self.fc_cls(x_cls) if self.with_cls else None
         bbox_pred = self.fc_reg(x_reg) if self.with_reg else None
         angle_pred = self.fc_angle(x_angle) 
-        
+
         return cls_score, bbox_pred, angle_pred
     
     @force_fp32(apply_to=('cls_score', 'bbox_pred'))
@@ -304,9 +304,6 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
             pos_inds = (labels >= 0) & (labels < bg_class_ind)
             # do not perform bounding box regression for BG anymore.
             
-            _, _, angle_pred = self.angle_coder.decode(angle_pred)
-            bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
-                        
             if pos_inds.any():    
                 if self.reg_decoded_bbox:
                     # When the regression loss (e.g. `IouLoss`,
@@ -315,13 +312,16 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
                     # already encoded coordinates to absolute format.
                     bbox_pred = self.bbox_coder.decode(rois[:, 1:], bbox_pred)
                 if self.reg_class_agnostic:
+
+                    _, _, angle_pred = self.angle_coder.decode(angle_pred)
+                    bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
                     pos_bbox_pred = bbox_pred.view(
                         bbox_pred.size(0), 5)[pos_inds.type(torch.bool)]
                 else:
-                    pos_bbox_pred = bbox_pred.view(
-                        bbox_pred.size(0), -1,
-                        5)[pos_inds.type(torch.bool),
-                           labels[pos_inds.type(torch.bool)]]
+                    _, _, angle_pred = self.angle_coder.decode(angle_pred.view(-1, self.angle_coder.encode_size))
+                    pos_angle_pred = angle_pred.view(bbox_pred.size(0), -1,1)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
+                    pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), -1,5)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
+                    pos_bbox_pred = bbox_pred = torch.cat((pos_bbox_pred[:, :4], pos_angle_pred), dim=1)
                 losses['loss_bbox'] = self.loss_bbox(
                     pos_bbox_pred,
                     bbox_targets[pos_inds.type(torch.bool)],
