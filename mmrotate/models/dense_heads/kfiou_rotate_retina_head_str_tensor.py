@@ -154,9 +154,6 @@ class STKFIoURRetinaHead(RotatedRetinaHead):
         bbox_weights = bbox_weights.reshape(-1, 5)
         bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
 
-        #bbox_pred_decode = self.bbox_coder.decode(anchors, bbox_pred)
-        #bbox_targets_decode = self.bbox_coder.decode(anchors, bbox_targets)
-
         angle_cls = angle_cls.permute(0, 2, 3, 1).reshape(-1, self.coding_len)
         angle_targets = angle_targets.reshape(-1, self.coding_len)
         angle_weights = angle_weights.reshape(-1, 1)
@@ -171,16 +168,6 @@ class STKFIoURRetinaHead(RotatedRetinaHead):
         _, _, angle_targ = self.angle_coder.decode(angle_targets)
         bbox_targets = torch.cat((bbox_targets[:, :4], angle_targ[:, None]), dim=1)
         bbox_targets_decode = self.bbox_coder.decode(anchors, bbox_targets)
-
-
-        # pred_tensor = torch.stack([*self.angle_coder.decode(angle_cls)], dim=-1)
-        # targets_tensor = torch.stack([*self.angle_coder.decode(angle_targets)], dim=-1)
-
-        # bbox_pred_decode = self.bbox_coder.decode(anchors, bbox_pred)
-        # bbox_targets_decode = self.bbox_coder.decode(anchors, bbox_targets)
-
-        # pred_tensor = torch.cat([bbox_pred_decode[:, :4], pred_tensor[:, -1:]], dim=-1)
-        # targets_tensor = torch.cat([bbox_targets_decode[:, :4], targets_tensor[:, -1:]], dim=-1)
 
         loss_bbox = self.loss_bbox(
             bbox_pred,
