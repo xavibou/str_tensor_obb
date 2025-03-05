@@ -52,6 +52,8 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
                  angle_coder=dict(
                      type='STCoder',
                      angle_version='le90'),
+                 loss_angle=dict(type='L1Loss', loss_weight=0.05),
+                 separate_angle=False,
                  conv_cfg=None,
                  norm_cfg=None,
                  init_cfg=None,
@@ -82,6 +84,8 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
         self.num_angle_fcs = num_angle_fcs    
         self.angle_coder = build_bbox_coder(angle_coder)
         self.coding_len = self.angle_coder.encode_size
+        self.loss_angle = loss_angle
+        self.separate_angle = separate_angle
 
         # add shared convs and fcs
         self.shared_convs, self.shared_fcs, last_layer_dim = \
@@ -313,15 +317,59 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
                     bbox_pred = self.bbox_coder.decode(rois[:, 1:], bbox_pred)
                 if self.reg_class_agnostic:
 
-                    _, _, angle_pred = self.angle_coder.decode(angle_pred)
-                    bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
-                    pos_bbox_pred = bbox_pred.view(
-                        bbox_pred.size(0), 5)[pos_inds.type(torch.bool)]
+                    if not self.separate_angle:
+                        _, _, angle_pred = self.angle_coder.decode(angle_pred)
+                        bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
+                        pos_bbox_pred = bbox_pred.view(
+                            bbox_pred.size(0), 5)[pos_inds.type(torch.bool)]
+                    else:
+                        pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), 5)[pos_inds.type(torch.bool)]
+                        bbox_weights[:, -1] = 0 # set angle weight in bbox to 0
+                        
+                        # Decode bbox and obtain width, height and angle
+                        #decoded_boxes = self.bbox_coder.decode(rois[:, 1:], bbox_targets)
+                        #wh = decoded_boxes[:, 2:-1]
+                        wh = rois[:,3:5] - rois[:,1:3]
+                        #breakpoint()
+                        angle_targets = self.angle_coder.encode(
+                                                            bbox_targets[:, -1, None], 
+                                                            wh[:, 0, None], 
+                                                            wh[:, 1, None]
+                                                            )
+                        losses['angle_loss'] = self.loss_bbox(
+                            angle_pred[pos_inds.type(torch.bool)],
+                            angle_targets[pos_inds.type(torch.bool)],
+                            bbox_weights[pos_inds.type(torch.bool)][:,:self.coding_len],
+                            avg_factor=bbox_targets.size(0),
+                            reduction_override=reduction_override)
                 else:
-                    _, _, angle_pred = self.angle_coder.decode(angle_pred.view(-1, self.angle_coder.encode_size))
-                    pos_angle_pred = angle_pred.view(bbox_pred.size(0), -1,1)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
-                    pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), -1,5)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
-                    pos_bbox_pred = bbox_pred = torch.cat((pos_bbox_pred[:, :4], pos_angle_pred), dim=1)
+                    if not self.separate_angle:
+                        _, _, angle_pred = self.angle_coder.decode(angle_pred.view(-1, self.angle_coder.encode_size))
+                        pos_angle_pred = angle_pred.view(bbox_pred.size(0), -1,1)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
+                        pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), -1,5)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
+                        pos_bbox_pred = bbox_pred = torch.cat((pos_bbox_pred[:, :4], pos_angle_pred), dim=1)
+                    else:
+                        pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), -1,5)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
+                        bbox_weights[:, -1] = 0 # set angle weight in bbox to 0
+                        
+                        # Decode bbox and obtain width, height and angle
+                        #decoded_boxes = self.bbox_coder.decode(rois[:, 1:], bbox_targets)
+                        #wh = decoded_boxes[:, 2:-1]
+                        wh = rois[:,3:5]
+                        angle_targets = self.angle_coder.encode(
+                                                            bbox_targets[:, -1, None], 
+                                                            wh[:, 0, None], 
+                                                            wh[:, 1, None]
+                                                            )
+                        pos_angle_pred = angle_pred.view(bbox_pred.size(0), -1,self.angle_coder.encode_size)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
+                        # losses['angle_loss'] = self.loss_bbox( angle_pred[pos_inds.type(torch.bool)],angle_targets[pos_inds.type(torch.bool)],bbox_weights[pos_inds.type(torch.bool)][:,:self.coding_len],avg_factor=bbox_targets.size(0),reduction_override=reduction_override)
+                        losses['angle_loss'] = self.loss_bbox( 
+                            pos_angle_pred,
+                            angle_targets[pos_inds.type(torch.bool)],
+                            bbox_weights[pos_inds.type(torch.bool)][:,:self.coding_len],
+                            avg_factor=bbox_targets.size(0),
+                            reduction_override=reduction_override)
+                        
                 losses['loss_bbox'] = self.loss_bbox(
                     pos_bbox_pred,
                     bbox_targets[pos_inds.type(torch.bool)],

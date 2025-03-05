@@ -29,6 +29,7 @@ from .h2rbox_head_str_tensor import H2RBoxVHeadStuctureTensor
 from .str_tensor_rotated_fcos_head import StructureTensorFCOSHead
 from .str_tensor_rotated_retina_head import STRRetinaHead
 from .kfiou_rotate_retina_head_str_tensor import STKFIoURRetinaHead
+from .gwd_rotate_retina_head_str_tensor import GWDRRetinaHead
 
 from .dcfl_head import RDCFLHead
 
@@ -41,5 +42,5 @@ __all__ = [
     'CSLRFCOSHead', 'OrientedRepPointsHead', 'RotatedDETRHead', 
     'RotatedDeformableDETRHead', 'ARSDeformableDETRHead', 'DNARSDeformableDETRHead',
     'H2RBoxHead', 'H2RBoxVHeadStuctureTensor', 'PSCRFCOSHead', 'KLDRepPointsHead', 'H2RBoxV2PHead',
-    'RDCFLHead', 'H2RBoxV2PHeadStuctureTensor', 'StructureTensorFCOSHead', 'STRRetinaHead', 'STKFIoURRetinaHead'
+    'RDCFLHead', 'H2RBoxV2PHeadStuctureTensor', 'StructureTensorFCOSHead', 'STRRetinaHead', 'STKFIoURRetinaHead', 'GWDRRetinaHead'
 ]

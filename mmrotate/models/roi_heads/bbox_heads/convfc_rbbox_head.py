@@ -69,6 +69,7 @@ class RotatedConvFCBBoxHead(RotatedBBoxHead):
         self.fc_out_channels = fc_out_channels
         self.conv_cfg = conv_cfg
         self.norm_cfg = norm_cfg
+        self.separate_angle = False
 
         # add shared convs and fcs
         self.shared_convs, self.shared_fcs, last_layer_dim = \

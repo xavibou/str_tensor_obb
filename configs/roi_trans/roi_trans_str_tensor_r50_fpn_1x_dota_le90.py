@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/hrsc.py', '../_base_/schedules/schedule_6x.py',
+    '../_base_/datasets/dotav1.py', '../_base_/schedules/schedule_1x.py',
     '../_base_/default_runtime.py'
 ]
 
@@ -60,13 +60,14 @@ model = dict(
                 out_channels=256,
                 featmap_strides=[4, 8, 16, 32]),
         ],
+        separate_angle=True,
         bbox_head=[
             dict(
-                type='RotatedShared2FCBBoxHead',
+                type='STRotatedShared2FCBBoxHead',
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
-                num_classes=1,
+                num_classes=15,
                 bbox_coder=dict(
                     type='DeltaXYWHAHBBoxCoder',
                     angle_range=angle_version,
@@ -86,8 +87,7 @@ model = dict(
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
-                num_classes=1,
-                separate_angle=False,
+                num_classes=15,
                 bbox_coder=dict(
                     type='DeltaXYWHAOBBoxCoder',
                     angle_range=angle_version,
@@ -96,7 +96,7 @@ model = dict(
                     proj_xy=True,
                     target_means=[0., 0., 0., 0., 0.],
                     target_stds=[0.05, 0.05, 0.1, 0.1, 0.5]),
-                reg_class_agnostic=False,
+                reg_class_agnostic=True,
                 loss_cls=dict(
                     type='CrossEntropyLoss',
                     use_sigmoid=False,

@@ -57,7 +57,7 @@ class RotatedBBoxHead(BaseModule):
                      use_sigmoid=False,
                      loss_weight=1.0),
                  loss_bbox=dict(
-                     type='SmoothL1Loss', beta=1.0, loss_weight=1.0),
+                     type='SmoothL1Loss', beta=1.0, loss_weight=0.05),
                  init_cfg=None):
         super(RotatedBBoxHead, self).__init__(init_cfg)
         assert with_cls or with_reg
@@ -337,8 +337,7 @@ class RotatedBBoxHead(BaseModule):
                     # already encoded coordinates to absolute format.
                     bbox_pred = self.bbox_coder.decode(rois[:, 1:], bbox_pred)
                 if self.reg_class_agnostic:
-                    pos_bbox_pred = bbox_pred.view(
-                        bbox_pred.size(0), 5)[pos_inds.type(torch.bool)]
+                    pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), 5)[pos_inds.type(torch.bool)]
                 else:
                     pos_bbox_pred = bbox_pred.view(
                         bbox_pred.size(0), -1,

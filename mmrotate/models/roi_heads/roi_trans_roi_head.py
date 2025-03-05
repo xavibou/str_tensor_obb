@@ -130,12 +130,14 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         bbox_feats = bbox_roi_extractor(x[:bbox_roi_extractor.num_inputs],
                                         rois)
         # do not support caffe_c4 model anymore
-        if not self.separate_angle:
-            cls_score, bbox_pred = bbox_head(bbox_feats)
+        #breakpoint()
+        outs = bbox_head(bbox_feats)
+        if len(outs) == 2:
+            cls_score, bbox_pred = outs
             bbox_results = dict(
                 cls_score=cls_score, bbox_pred=bbox_pred, bbox_feats=bbox_feats)
-        else:
-            cls_score, bbox_pred, angle_pred = bbox_head(bbox_feats)
+        elif len(outs) == 3:
+            cls_score, bbox_pred, angle_pred = outs
             bbox_results = dict(
                 cls_score=cls_score, bbox_pred=bbox_pred, angle_pred=angle_pred, bbox_feats=bbox_feats)
         return bbox_results
@@ -165,17 +167,16 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         bbox_targets = self.bbox_head[stage].get_targets(
             sampling_results, gt_bboxes, gt_labels, rcnn_train_cfg)
         
-        if not self.separate_angle:
-            loss_bbox = self.bbox_head[stage].loss(bbox_results['cls_score'],
-                                                bbox_results['bbox_pred'], rois,
-                                                *bbox_targets)
-        else:
+        if 'angle_pred' in bbox_results.keys():
             loss_bbox = self.bbox_head[stage].loss(bbox_results['cls_score'],
                                                 bbox_results['bbox_pred'], 
                                                 bbox_results['angle_pred'], 
                                                 rois,
                                                 *bbox_targets)
-
+        else:
+            loss_bbox = self.bbox_head[stage].loss(bbox_results['cls_score'],
+                                                bbox_results['bbox_pred'], rois,
+                                                *bbox_targets)
         bbox_results.update(
             loss_bbox=loss_bbox, rois=rois, bbox_targets=bbox_targets)
         return bbox_results
@@ -254,6 +255,13 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
                                                     gt_bboxes, gt_labels,
                                                     rcnn_train_cfg)
 
+            if 'angle_pred' in bbox_results.keys():
+                _, _, angle_pred = self.bbox_head[i].angle_coder.decode(bbox_results['angle_pred'])
+                bbox_results['bbox_pred'] = torch.cat(
+                                    (bbox_results['bbox_pred'][:, :4], 
+                                    angle_pred[:, None])
+                                    , dim=1
+                                    )
             for name, value in bbox_results['loss_bbox'].items():
                 losses[f's{i}.{name}'] = (
                     value * lw if 'loss' in name else value)
@@ -305,12 +313,18 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         rois = bbox2roi(proposal_list)
         for i in range(self.num_stages):
             bbox_results = self._bbox_forward(i, x, rois)
-
             # split batch bbox prediction back to each image
             cls_score = bbox_results['cls_score']
             bbox_pred = bbox_results['bbox_pred']
-            if self.separate_angle:
+            if 'angle_pred' in bbox_results.keys():
                 angle_pred = bbox_results['angle_pred']
+                _, _, apred = self.bbox_head[i].angle_coder.decode(angle_pred)
+                bbox_pred = torch.cat(
+                                    (bbox_pred[:, :4], 
+                                    apred[:, None])
+                                    , dim=1
+                                    )
+
             num_proposals_per_img = tuple(
                 len(proposals) for proposals in proposal_list)
             rois = rois.split(num_proposals_per_img, 0)
@@ -320,7 +334,7 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
             else:
                 bbox_pred = self.bbox_head[i].bbox_pred_split(
                     bbox_pred, num_proposals_per_img)
-            if self.separate_angle:
+            if 'angle_pred' in bbox_results.keys():
                 if isinstance(angle_pred, torch.Tensor):
                     angle_pred = angle_pred.split(num_proposals_per_img, 0)
                 else:
@@ -352,7 +366,7 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         det_bboxes = []
         det_labels = []
         for i in range(num_imgs):
-            if not self.separate_angle:
+            if not 'angle_pred' in bbox_results.keys():
                 det_bbox, det_label = self.bbox_head[-1].get_bboxes(
                     rois[i],
                     cls_score[i],
