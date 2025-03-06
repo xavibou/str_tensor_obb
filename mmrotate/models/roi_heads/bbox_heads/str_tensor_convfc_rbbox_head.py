@@ -347,7 +347,7 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
                         _, _, angle_pred = self.angle_coder.decode(angle_pred.view(-1, self.angle_coder.encode_size))
                         pos_angle_pred = angle_pred.view(bbox_pred.size(0), -1,1)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
                         pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), -1,5)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
-                        pos_bbox_pred = bbox_pred = torch.cat((pos_bbox_pred[:, :4], pos_angle_pred), dim=1)
+                        pos_bbox_pred = torch.cat((pos_bbox_pred[:, :4], pos_angle_pred), dim=1)
                     else:
                         pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), -1,5)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
                         bbox_weights[:, -1] = 0 # set angle weight in bbox to 0
@@ -517,42 +517,37 @@ class STRotatedKFIoUShared2FCBBoxHead(STRotatedConvFCBBoxHead):
                     losses.update(acc_)
                 else:
                     losses['acc'] = accuracy(cls_score, labels)
+
         if bbox_pred is not None:
             bg_class_ind = self.num_classes
             # 0~self.num_classes-1 are FG, self.num_classes is BG
             pos_inds = (labels >= 0) & (labels < bg_class_ind)
             # do not perform bounding box regression for BG anymore.
-            
-            _, _, angle_pred = self.angle_coder.decode(angle_pred)
-            bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
 
             if pos_inds.any():
-
-                bbox_pred_decode = self.bbox_coder.decode(
-                    rois[:, 1:], bbox_pred)
-                bbox_targets_decode = self.bbox_coder.decode(
-                    rois[:, 1:], bbox_targets)
                 if self.reg_class_agnostic:
                     pos_bbox_pred = bbox_pred.view(
                         bbox_pred.size(0), 5)[pos_inds.type(torch.bool)]
                     pos_bbox_pred_decode = bbox_pred_decode.view(
                         bbox_pred_decode.size(0), 5)[pos_inds.type(torch.bool)]
                 else:
-                    pos_bbox_pred = bbox_pred.view(
-                        bbox_pred.size(0), -1,
-                        5)[pos_inds.type(torch.bool),
-                           labels[pos_inds.type(torch.bool)]]
-                    pos_bbox_pred_decode = bbox_pred_decode.view(
-                        bbox_pred_decode.size(0), -1,
-                        5)[pos_inds.type(torch.bool),
-                           labels[pos_inds.type(torch.bool)]]
+            
+                    _, _, angle_pred = self.angle_coder.decode(angle_pred.view(-1, self.angle_coder.encode_size))
+                    pos_angle_pred = angle_pred.view(bbox_pred.size(0), -1,1)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
+                    pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), -1,5)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
+                    pos_bbox_pred = torch.cat((pos_bbox_pred[:, :4], pos_angle_pred), dim=1)
+
+                    pos_bbox_pred_decode = self.bbox_coder.decode(rois[pos_inds.type(torch.bool), 1:], pos_bbox_pred)
+                    bbox_targets_decode = self.bbox_coder.decode(rois[pos_inds.type(torch.bool), 1:], bbox_targets[pos_inds.type(torch.bool)])
+                    
+
+
                 losses['loss_bbox'] = self.loss_bbox(
                     pos_bbox_pred,
                     bbox_targets[pos_inds.type(torch.bool)],
                     bbox_weights[pos_inds.type(torch.bool)],
                     pred_decode=pos_bbox_pred_decode,
-                    targets_decode=bbox_targets_decode[pos_inds.type(
-                        torch.bool)],
+                    targets_decode=bbox_targets_decode,
                     avg_factor=bbox_targets.size(0),
                     reduction_override=reduction_override)
             else:

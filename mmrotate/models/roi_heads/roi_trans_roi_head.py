@@ -130,7 +130,6 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
         bbox_feats = bbox_roi_extractor(x[:bbox_roi_extractor.num_inputs],
                                         rois)
         # do not support caffe_c4 model anymore
-        #breakpoint()
         outs = bbox_head(bbox_feats)
         if len(outs) == 2:
             cls_score, bbox_pred = outs

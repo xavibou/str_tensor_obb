@@ -60,14 +60,13 @@ model = dict(
                 out_channels=256,
                 featmap_strides=[4, 8, 16, 32]),
         ],
-        separate_angle=True,
         bbox_head=[
             dict(
-                type='STRotatedShared2FCBBoxHead',
+                type='RotatedShared2FCBBoxHead',
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
-                num_classes=15,
+                num_classes=1,
                 bbox_coder=dict(
                     type='DeltaXYWHAHBBoxCoder',
                     angle_range=angle_version,
@@ -87,7 +86,8 @@ model = dict(
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
-                num_classes=15,
+                num_classes=1,
+                separate_angle=False,
                 bbox_coder=dict(
                     type='DeltaXYWHAOBBoxCoder',
                     angle_range=angle_version,

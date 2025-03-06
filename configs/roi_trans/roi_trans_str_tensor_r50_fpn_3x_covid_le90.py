@@ -3,6 +3,7 @@ _base_ = [
     '../_base_/default_runtime.py'
 ]
 
+
 angle_version = 'le90'
 model = dict(
     type='RoITransformer',
@@ -62,12 +63,11 @@ model = dict(
         ],
         bbox_head=[
             dict(
-                type='STRotatedShared2FCBBoxHead',
+                type='RotatedShared2FCBBoxHead',
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
                 num_classes=2,
-                separate_angle=True,
                 bbox_coder=dict(
                     type='DeltaXYWHAHBBoxCoder',
                     angle_range=angle_version,
@@ -88,7 +88,7 @@ model = dict(
                 fc_out_channels=1024,
                 roi_feat_size=7,
                 num_classes=2,
-                separate_angle=True,
+                separate_angle=False,
                 bbox_coder=dict(
                     type='DeltaXYWHAOBBoxCoder',
                     angle_range=angle_version,

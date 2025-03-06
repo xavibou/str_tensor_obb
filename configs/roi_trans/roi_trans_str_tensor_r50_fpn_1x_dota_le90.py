@@ -60,10 +60,9 @@ model = dict(
                 out_channels=256,
                 featmap_strides=[4, 8, 16, 32]),
         ],
-        separate_angle=True,
         bbox_head=[
             dict(
-                type='STRotatedShared2FCBBoxHead',
+                type='RotatedShared2FCBBoxHead',
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
@@ -88,6 +87,7 @@ model = dict(
                 fc_out_channels=1024,
                 roi_feat_size=7,
                 num_classes=15,
+                separate_angle=False,
                 bbox_coder=dict(
                     type='DeltaXYWHAOBBoxCoder',
                     angle_range=angle_version,
@@ -96,7 +96,7 @@ model = dict(
                     proj_xy=True,
                     target_means=[0., 0., 0., 0., 0.],
                     target_stds=[0.05, 0.05, 0.1, 0.1, 0.5]),
-                reg_class_agnostic=True,
+                reg_class_agnostic=False,
                 loss_cls=dict(
                     type='CrossEntropyLoss',
                     use_sigmoid=False,
@@ -181,7 +181,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(800, 512)),
+    dict(type='RResize', img_scale=(1024, 1024)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
@@ -192,27 +192,9 @@ train_pipeline = [
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-
-test_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(
-        type='MultiScaleFlipAug',
-        img_scale=(800, 512),
-        flip=False,
-        transforms=[
-            dict(type='RResize'),
-            dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', size_divisor=32),
-            dict(type='DefaultFormatBundle'),
-            dict(type='Collect', keys=['img'])
-        ])
-]
-
 data = dict(
-    samples_per_gpu=2,
     train=dict(pipeline=train_pipeline, version=angle_version),
-    val=dict(pipeline=test_pipeline, version=angle_version),
-    test=dict(pipeline=test_pipeline, version=angle_version))
-
+    val=dict(version=angle_version),
+    test=dict(version=angle_version))
 
 optimizer = dict(lr=0.005)

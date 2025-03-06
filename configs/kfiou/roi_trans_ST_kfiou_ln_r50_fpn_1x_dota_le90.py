@@ -6,7 +6,7 @@ model = dict(
         separate_angle=True,
         bbox_head=[
             dict(
-                type='STRotatedShared2FCBBoxHead',
+                type='RotatedShared2FCBBoxHead',
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
@@ -20,15 +20,18 @@ model = dict(
                     target_stds=[0.1, 0.1, 0.2, 0.2, 1]),
                 reg_class_agnostic=True,
                 loss_cls=dict(
-                    type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-                loss_bbox=dict(
-                    type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0)),
+                    type='CrossEntropyLoss',
+                    use_sigmoid=False,
+                    loss_weight=1.0),
+                loss_bbox=dict(type='SmoothL1Loss', beta=1.0,
+                               loss_weight=1.0)),
             dict(
                 type='STRotatedKFIoUShared2FCBBoxHead',
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
                 num_classes=15,
+                separate_angle=False,
                 bbox_coder=dict(
                     type='DeltaXYWHAOBBoxCoder',
                     angle_range=angle_version,
