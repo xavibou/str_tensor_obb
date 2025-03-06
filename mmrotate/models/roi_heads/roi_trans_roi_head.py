@@ -316,13 +316,10 @@ class RoITransRoIHead(BaseModule, metaclass=ABCMeta):
             cls_score = bbox_results['cls_score']
             bbox_pred = bbox_results['bbox_pred']
             if 'angle_pred' in bbox_results.keys():
-                angle_pred = bbox_results['angle_pred']
-                _, _, apred = self.bbox_head[i].angle_coder.decode(angle_pred)
-                bbox_pred = torch.cat(
-                                    (bbox_pred[:, :4], 
-                                    apred[:, None])
-                                    , dim=1
-                                    )
+                _, _, angle_pred = self.bbox_head[i].angle_coder.decode(bbox_results['angle_pred'].view(-1, self.bbox_head[i].angle_coder.encode_size))
+                bbox_pred = torch.cat((bbox_pred.view(-1, 5)[:, :4], angle_pred[:, None]),dim=1)
+                angle_pred = angle_pred.view(bbox_results['angle_pred'].size(0), -1)
+                bbox_pred = bbox_pred.view(bbox_results['angle_pred'].size(0), -1)
 
             num_proposals_per_img = tuple(
                 len(proposals) for proposals in proposal_list)

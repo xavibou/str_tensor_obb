@@ -316,7 +316,6 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
                     # already encoded coordinates to absolute format.
                     bbox_pred = self.bbox_coder.decode(rois[:, 1:], bbox_pred)
                 if self.reg_class_agnostic:
-
                     if not self.separate_angle:
                         _, _, angle_pred = self.angle_coder.decode(angle_pred)
                         bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
@@ -344,7 +343,7 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
                             reduction_override=reduction_override)
                 else:
                     if not self.separate_angle:
-                        _, _, angle_pred = self.angle_coder.decode(angle_pred.view(-1, self.angle_coder.encode_size))
+                        _, _, angle_pred = self.angle_coder.decode(angle_pred.view(-1, self.angle_coder.encode_size)).view(bbox_pred.size(0), -1,1)
                         pos_angle_pred = angle_pred.view(bbox_pred.size(0), -1,1)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
                         pos_bbox_pred = bbox_pred.view(bbox_pred.size(0), -1,5)[pos_inds.type(torch.bool),labels[pos_inds.type(torch.bool)]]
                         pos_bbox_pred = torch.cat((pos_bbox_pred[:, :4], pos_angle_pred), dim=1)
@@ -425,10 +424,11 @@ class STRotatedConvFCBBoxHead(RotatedBBoxHead):
         # bbox_pred would be None in some detector when with_reg is False,
         # e.g. Grid R-CNN.
         if bbox_pred is not None:
-            _, _, angle_pred = self.angle_coder.decode(angle_pred)
-            bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
+            #_, _, angle_pred = self.angle_coder.decode(angle_pred)
+            #bbox_pred = torch.cat((bbox_pred[:, :4], angle_pred[:, None]), dim=1)
             bboxes = self.bbox_coder.decode(
                 rois[..., 1:], bbox_pred, max_shape=img_shape)
+            #bbox_pred = bbox_pred.view(bbox_results['angle_pred'].size(0), -1)
         else:
             bboxes = rois[:, 1:].clone()
             if img_shape is not None:
